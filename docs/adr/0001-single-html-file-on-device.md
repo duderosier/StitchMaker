@@ -7,3 +7,7 @@ The whole app is a single `index.html` (markup, styles, script and the DMC Floss
 - **Opening the file locally**: rejected; iOS shows a script-less preview and Android behaviour varies by file manager.
 - **Private claude.ai artifact link**: fine for previews, but it needs a claude.ai sign-in and runs inside a sandboxed frame, which makes file downloads, the share sheet and a clean home-screen app less reliable on iOS.
 - **A framework with a build step / a backend**: unnecessary for a personal tool and would break the "one file" constraint.
+
+## Consequences
+
+- The app itself is entirely `index.html`. Installing it as an offline home-screen app needs a few small companions the browser insists on loading by URL: `sw.js` (a service worker cannot be inline), `manifest.webmanifest` (Android install) and the `icon-*.png` files. They hold no app logic; deleting them only loses offline install.
