@@ -27,11 +27,11 @@ The number of bare canvas cells left between the outermost Stitches and the Cut 
 _Avoid_: Padding, bleed
 
 **Ring Hole**:
-The hole a jump ring passes through on a Cut-Out, placed either on a Ring Tab outside the design or inside the design itself.
+The hole a jump ring passes through, placed either on a Ring Tab outside the design or inside the design itself; its size comes from a preset or is set by hand.
 _Avoid_: Keyring, loop, eyelet
 
 **Ring Tab**:
-A small extension of a Cut-Out beyond the design's outline that holds an outside Ring Hole.
+A small extension beyond the Blank's outline that holds an outside Ring Hole; it does not count toward the Blank's stated size.
 _Avoid_: Ear, tab, hanger
 
 **Fabric Count**:
