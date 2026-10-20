@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stitch Keychains</title>
+</head>
+<body>
+<script id="engine">
+/* Pattern Engine: pure data in, pure data out. No DOM, canvas or storage.
+   Vocabulary follows GLOSSARY.md. Tested under Node by extracting this block. */
+var PatternEngine = (function () {
+  'use strict';
+
+  // DMC six-strand floss. Color data: craft-color-codes by MakeBead (https://makebead.com), CC BY 4.0.
+  var DMC_RAW = '3713|Salmon Very Light|FFE2E2;761|Salmon Light|FFC9C9;760|Salmon|F5ADAD;3712|Salmon Medium|F18787;3328|Salmon Dark|E36D6D;347|Salmon Very Dark|BF2D2D;353|Peach|FED7CC;352|Coral Light|FD9C97;351|Coral|E96A67;350|Coral Medium|E04848;349|Coral Dark|D21035;817|Coral Red Very Dark|BB051F;3708|Melon Light|FFCBD5;3706|Melon Medium|FFADBC;3705|Melon Dark|FF7992;3801|Melon Very Dark|E74967;666|Bright Red|E31D42;321|Red|C72B3B;304|Red Medium|B71F33;498|Red Dark|A7132B;816|Garnet|970B23;815|Garnet Medium|87071F;814|Garnet Dark|7B001B;894|Carnation Very Light|FFB2BB;893|Carnation Light|FC90A2;892|Carnation Medium|FF798C;891|Carnation Dark|FF5773;818|Baby Pink|FFDFD9;957|Geranium Pale|FDB5B5;956|Geranium|FF9191;309|Rose Dark|C12041;963|Dusty Rose Ultra Very Light|FFD7D7;3716|Dusty Rose Medium Very Light|FFBDBD;962|Dusty Rose Medium|E68A8A;961|Dusty Rose Dark|CF7373;3833|Raspberry Light|EA8699;3832|Raspberry Medium|DB556E;3831|Raspberry Dark|B32F48;777|Raspberry Very Dark|913546;819|Baby Pink Light|FFEEEB;3326|Rose Light|FBADB4;776|Pink Medium|FCB0B9;899|Rose Medium|F27688;335|Rose|EE546E;326|Rose Very Dark|B33B4B;151|Dusty Rose Very Light|F0CED4;3354|Dusty Rose Light|E4A6AC;3733|Dusty Rose|E8879B;3731|Dusty Rose Very Dark|DA6783;3350|Dusty Rose Ultra Dark|BC4365;150|Dusty Rose Ultra Very Dark|AB0249;3689|Mauve Light|FBBFC2;3688|Mauve Medium|E7A9AC;3687|Mauve|C96B70;3803|Mauve Dark|AB3357;3685|Mauve Very Dark|881531;605|Cranberry Very Light|FFC0CD;604|Cranberry Light|FFB0BE;603|Cranberry|FFA4BE;602|Cranberry Medium|E24874;601|Cranberry Dark|D1286A;600|Cranberry Very Dark|CD2F63;3806|Cyclamen Pink Light|FF8CAE;3805|Cyclamen Pink|F3478B;3804|Cyclamen Pink Dark|E02876;3609|Plum Ultra Light|F4AED5;3608|Plum Very Light|EA9CC4;3607|Plum Light|C54989;718|Plum|9C2462;917|Plum Medium|9B1359;915|Plum Dark|820043;225|Shell Pink Ultra Very Light|FFDFD5;224|Shell Pink Very Light|EBB7AF;152|Shell Pink Medium Light|E2A099;223|Shell Pink Light|CC847C;3722|Shell Pink Medium|BC6C64;3721|Shell Pink Dark|A14B51;221|Shell Pink Very Dark|883E43;778|Antique Mauve Very Light|DFB3BB;3727|Antique Mauve Light|DBA9B2;316|Antique Mauve Medium|B7737F;3726|Antique Mauve Dark|9B5B66;315|Antique Mauve Medium Dark|814952;3802|Antique Mauve Very Darkv|714149;902|Garnet Very Dark|822637;3743|Antique Violet Very Light|D7CBD3;3042|Antique Violet Light|B79DA7;3041|Antique Violet Medium|956F7C;3740|Antique Violet Dark|785762;3836|Grape Light|BA91AA;3835|Grape Medium|946083;3834|Grape Dark|72375D;154|Grape Very Dark|572433;211|Lavender Light|E3CBE3;210|Lavender Medium|C39FC3;209|Lavender Dark|A37BA7;208|Lavender Very Dark|835B8B;3837|Lavender Ultra Dark|6C3A6E;327|Violet Dark|633666;153|Violet Very Light|E6CCD9;554|Violet Light|DBB3CB;553|Violet|A3638B;552|Violet  Medium|803A6B;550|Violet Very Dark|5C184E;3747|Blue Violet Very Light|D3D7ED;341|Blue Violet Light|B7BFDD;156|Blue Violet Medium Light|A3AED1;340|Blue Violet Medium|ADA7C7;155|Blue Violet Medium Dark|9891B6;3746|Blue Violet Dark|776B98;333|Blue Violet Very Dark|5C5478;157|Cornflower Blue Very Light|BBC3D9;794|Cornflower Blue Light|8F9CC1;793|Cornflower Blue Medium|707DA2;3807|Cornflower Blue|60678C;792|Cornflower Blue Dark|555B7B;158|Cornflower Blue  Very Dark|4C526E;791|Cornflower Blue Very Dark|464563;3840|Lavender Blue Light|B0C0DA;3839|Lavender Blue Medium|7B8EAB;3838|Lavender Blue Dark|5C7294;800|Delft Blue Pale|C0CCDE;809|Delft Blue|94A8C6;799|Delft Blue Medium|748EB6;798|Delft Blue Dark|466A8E;797|Royal Blue|13477D;796|Royal Blue Dark|11416D;820|Royal Blue Very Dark|0E365C;162|Blue Ultra Very Light|DBECF5;827|Blue Very Light|BDDDED;813|Blue Light|A1C2D7;826|Blue Medium|6B9EBF;825|Blue Dark|4781A5;824|Blue Very Dark|396987;996|Electric Blue Medium|30C2EC;3843|Electric Blue|14AAD0;995|Electric Blue Dark|2696B6;3846|Turquoise Bright Light|06E3E6;3845|Turquoise Bright Medium|04C4CA;3844|Turquoise Bright Dark|12AEBA;159|Blue Gray Light|C7CAD7;160|Blue Gray Medium|999FB7;161|Blue Gray|7880A4;3756|Baby Blue Ultra Very Light|EEFCFC;775|Baby Blue Very Light|D9EBF1;3841|Baby Blue Pale|CDDFED;3325|Baby Blue Light|B8D2E6;3755|Baby Blue|93B4CE;334|Baby Blue Medium|739FC1;322|Baby Blue Dark|5A8FB8;312|Baby Blue Very Dark|35668B;803|Baby Blue Ultra Very Dark|2C597C;336|Navy Blue|253B73;823|Navy Blue Dark|213063;939|Navy Blue Very Dark|1B2853;3753|Antique Blue Ultra Very Light|DBE2E9;3752|Antique Blue Very Light|C7D1DB;932|Antique Blue Light|A2B5C6;931|Antique Blue Medium|6A859E;930|Antique Blue Dark|455C71;3750|Antique Blue Very Dark|384C5E;828|Sky Blue Very Light|C5E8ED;3761|Sky Blue Light|ACD8E2;519|Sky Blue|7EB1C8;518|Wedgewood Light|4F93A7;3760|Wedgewood Medium|3E85A2;517|Wedgewood Dark|3B768F;3842|Wedgewood Very Dark|32667C;311|Wedgewood Ultra Very Dark|1C5066;747|Peacock Blue Very Light|E5FCFD;3766|Peacock Blue Light|99CFD9;807|Peacock Blue|64ABBA;806|Peacock Blue Dark|3D95A5;3765|Peacock Blue Very Dark|347F8C;3811|Turquoise Very Light|BCE3E6;598|Turquoise Light|90C3CC;597|Turquoise|5BA3B3;3810|Turquoise Dark|488E9A;3809|Turquoise Vy Dark|3F7C85;3808|Turquoise Ultra Very Dark|366970;928|Gray Green Very Light|DDE3E3;927|Gray Green Light|BDCBCB;926|Gray Green Medium|98AEAE;3768|Gray Green Dark|657F7F;924|Gray Green Vy Dark|566A6A;3849|Teal Green Light|52B3A4;3848|Teal Green Medium|559392;3847|Teal Green Dark|347D75;964|Sea Green Light|A9E2D8;959|Sea Green Medium|59C7B4;958|Sea Green Dark|3EB6A1;3812|Sea Green Very Dark|2F8C84;3851|Green Bright Light|49B3A1;943|Green Bright Medium|3D9384;3850|Green Bright Dark|378477;993|Aquamarine Very Light|90C0B4;992|Aquamarine Light|6FAE9F;3814|Aquamarine|508B7D;991|Aquamarine Dark|477B6E;966|Jade Ultra Very Light|B9D7C0;564|Jade Very Light|A7CDAF;563|Jade Light|8FC098;562|Jade Medium|53976A;505|Jade Green|338362;3817|Celadon Green Light|99C3AA;3816|Celadon Green|65A57D;163|Celadon Green Medium|4D8361;3815|Celadon Green Dark|477759;561|Celadon Green VD|2C6A45;504|Blue Green Very Light|C4DECC;3813|Blue Green Light|B2D4BD;503|Blue Green Medium|7BAC94;502|Blue Green|5B9071;501|Blue Green Dark|396F52;500|Blue Green Very Dark|044D33;955|Nile Green Light|A2D6AD;954|Nile Green|88BA91;913|Nile Green Medium|6DAB77;912|Emerald Green Light|1B9D6B;911|Emerald Green Medium|189065;910|Emerald Green Dark|187E56;909|Emerald Green Very Dark|156F49;3818|Emerald Green Ultra Very Dark|115A3B;369|Pistachio Green Very Light|D7EDCC;368|Pistachio Green Light|A6C298;320|Pistachio Green Medium|69885A;367|Pistachio Green Dark|617A52;319|Pistachio Grn Very Dark|205F2E;890|Pistachio Grn Ultra Very Dark|174923;164|Forest Green Light|C8D8B8;989|Forest Green|8DA675;988|Forest Green Medium|738B5B;987|Forest Green Dark|587141;986|Forest Green Very Dark|405230;772|Yellow Green Very Light|E4ECD4;3348|Yellow Green Light|CCD9B1;3347|Yellow Green Medium|71935C;3346|Hunter Green|406A3A;3345|Hunter Green Dark|1B5915;895|Hunter Green Very Dark|1B5300;704|Chartreuse Bright|9ECF34;703|Chartreuse|7BB547;702|Kelly Green|47A72F;701|Green Light|3F8F29;700|Green Bright|07731B;699|Green|056517;907|Parrot Green Light|C7E666;906|Parrot Green Medium|7FB335;905|Parrot Green Dark|628A28;904|Parrot Green Very Dark|557822;472|Avocado Green Ultra Light|D8E498;471|Avocado Grn Very Light|AEBF79;470|Avocado Grn Light|94AB4F;469|Avocado Green|72843C;937|Avocado Green Medium|627133;936|Avocado Green Very Dark|4C5826;935|Avocado Green Dark|424D21;934|Avocado Grn Black|313919;523|Fern Green Light|ABB197;3053|Green Gray|9CA482;3052|Green Gray Medium|889268;3051|Green Gray Dark|5F6648;524|Fern Green Very Light|C4CDAC;522|Fern Green|969E7E;520|Fern Green Dark|666D4F;3364|Pine Green|83975F;3363|Pine Green Medium|728256;3362|Pine Green Dark|5E6B47;165|Moss Green Very Light|EFF4A4;3819|Moss Green Light|E0E868;166|Moss Green Medium Light|C0C840;581|Moss Green|A7AE38;580|Moss Green Dark|888D33;734|Olive Green Light|C7C077;733|Olive Green Medium|BCB34C;732|Olive Green|948C36;731|Olive Green Dark|938B37;730|Olive Green Very Dark|827B30;3013|Khaki Green Light|B9B982;3012|Khaki Green Medium|A6A75D;3011|Khaki Green Dark|898A58;372|Mustard Light|CCB784;371|Mustard|BFA671;370|Mustard Medium|B89D64;834|Golden Olive Very Light|DBBE7F;833|Golden Olive Light|C8AB6C;832|Golden Olive|BD9B51;831|Golden Olive Medium|AA8F56;830|Golden Olive Dark|8D784B;829|Golden Olive Very Dark|7E6B42;613|Drab Brown Very Light|DCC4AA;612|Drab Brown Light|BC9A78;611|Drab Brown|967656;610|Drab Brown Dark|796047;3047|Yellow Beige Light|E7D6C1;3046|Yellow Beige Medium|D8BC9A;3045|Yellow Beige Dark|BC966A;167|Yellow Beige Very Dark|A77C49;746|Off White|FCFCEE;677|Old Gold Very Light|F5ECCB;422|Hazelnut Brown Light|C69F7B;3828|Hazelnut Brown|B78B61;420|Hazelnut Brown Dark|A07042;869|Hazelnut Brown Very Dark|835E39;728|Topaz|E4B468;783|Topaz Medium|CE9124;782|Topaz Dark|AE7720;781|Topaz Very Dark|A26D20;780|Topaz Ultra Very Dark|94631A;676|Old Gold Light|E5CE97;729|Old Gold Medium|D0A53E;680|Old Gold Dark|BC8D0E;3829|Old Gold Vy Dark|A98204;3822|Straw Light|F6DC98;3821|Straw|F3CE75;3820|Straw Dark|DFB65F;3852|Straw Very Dark|CD9D37;445|Lemon Light|FFFB8B;307|Lemon|FDED54;973|Canary Bright|FFE300;444|Lemon Dark|FFD600;3078|Golden Yellow Very Light|FDF9CD;727|Topaz Very Light|FFF1AF;726|Topaz Light|FDD755;725|Topaz Medium Light|FFC840;972|Canary Deep|FFB515;745|Yellow Pale Light|FFE9AD;744|Yellow Pale|FFE793;743|Yellow Medium|FED376;742|Tangerine Light|FFBF57;741|Tangerine Medium|FFA32B;740|Tangerine|FF8B00;970|Pumpkin Light|F78B13;971|Pumpkin|F67F00;947|Burnt Orange|FF7B4D;946|Burnt Orange Medium|EB6307;900|Burnt Orange Dark|D15807;967|Apricot Very Light|FFDED5;3824|Apricot Light|FECDC2;3341|Apricot|FCAB98;3340|Apricot Medium|FF836F;608|Burnt Orange Bright|FD5D35;606|Orange Red Bright|FA3203;951|Tawny Light|FFE2CF;3856|Mahogany Ultra Very Light|FFD3B5;722|Orange Spice Light|F7976F;721|Orange Spice Medium|F27842;720|Orange Spice Dark|E55C1F;3825|Pumpkin Pale|FDBD96;922|Copper Light|E27323;921|Copper|C66218;920|Copper Medium|AC5414;919|Red Copper|A64510;918|Red Copper Dark|82340A;3770|Tawny Vy Light|FFEEE3;945|Tawny|FBD5BB;402|Mahogany Very Light|F7A777;3776|Mahogany Light|CF7939;301|Mahogany Medium|B35F2B;400|Mahogany Dark|8F430F;300|Mahogany Very Dark|6F2F00;3823|Yellow Ultra Pale|FFFDE3;3855|Autumn Gold Light|FAD396;3854|Autumn Gold Medium|F2AF68;3853|Autumn Gold Dark|F29746;3827|Golden Brown Pale|F7BB77;977|Golden Brown Light|DC9C56;976|Golden Brown Medium|C28142;3826|Golden Brown|AD7239;975|Golden Brown Dark|914F12;948|Peach Very Light|FEE7DA;754|Peach Light|F7CBBF;3771|Terra Cotta Ultra Very Light|F4BBA9;758|Terra Cotta Very Light|EEAA9B;3778|Terra Cotta Light|D98978;356|Terra Cotta Medium|C56A5B;3830|Terra Cotta|B95544;355|Terra Cotta Dark|984436;3777|Terra Cotta Very Dark|863022;3779|Rosewood Ultra Very Light|F8CAC8;3859|Rosewood Light|BA8B7C;3858|Rosewood Medium|964A3F;3857|Rosewood Dark|68251A;3774|Desert Sand Very Light|F3E1D7;950|Desert Sand Light|EED3C4;3064|Desert Sand|C48E70;407|Desert Sand Medium|BB8161;3773|Desert Sand Dark|B67552;3772|Desert Sand Very Dark|A06C50;632|Desert Sand Ultra Very Dark|875539;453|Shell Gray Light|D7CECB;452|Shell Gray Medium|C0B3AE;451|Shell Gray Dark|917B73;3861|Cocoa Light|A68881;3860|Cocoa|7D5D57;779|Cocoa Dark|624B45;712|Cream|FFFBEF;739|Tan Ultra Very Light|F8E4C8;738|Tan Very Light|ECCC9E;437|Tan Light|E4BB8E;436|Tan|CB9051;435|Brown Very Light|B87748;434|Brown Light|985E33;433|Brown Medium|7A451F;801|Coffee Brown Dark|653919;898|Coffee Brown Very Dark|492A13;938|Coffee Brown Ultra Dark|361F0E;3371|Black Brown|1E1108;543|Beige Brown Ultra Very Light|F2E3CE;3864|Mocha Beige Light|CBB69C;3863|Mocha Beige Medium|A4835C;3862|Mocha Beige Dark|8A6E4E;3031|Mocha Brown Very Dark|4B3C2A;B5200|Snow White|FFFFFF;Blanc|White|FCFBF8;3865|Winter White|F9F7F1;Ecru|Ecru|F0EADA;822|Beige Gray Light|E7E2D3;644|Beige Gray Medium|DDD8CB;642|Beige Gray Dark|A49878;640|Beige Gray Very Dark|857B61;3787|Brown Gray Dark|625D50;3021|Brown Gray Very Dark|4F4B41;3024|Brown Gray Very Light|EBEAE7;3023|Brown Gray Light|B1AA97;3022|Brown Gray Medium|8E9078;535|Ash Gray Very Light|636458;3033|Mocha Brown Very Light|E3D8CC;3782|Mocha Brown Light|D2BCA6;3032|Mocha Brown Medium|B39F8B;3790|Beige Gray Ultra Dark|7F6A55;3781|Mocha Brown Dark|6B5743;3866|Mocha Brown Ultra Very Light|FAF6F0;842|Beige Brown Very Light|D1BAA1;841|Beige Brown Light|B69B7E;840|Beige Brown Medium|9A7C5C;839|Beige Brown Dark|675541;838|Beige Brown Very Dark|594937;3072|Beaver Gray Very Light|E6E8E8;648|Beaver Gray Light|BCB4AC;647|Beaver Gray Medium|B0A69C;646|Beaver Gray Dark|877D73;645|Beaver Gray Very Dark|6E655C;844|Beaver Gray Ultra Dark|484848;762|Pearl Gray Very Light|ECECEC;415|Pearl Gray|D3D3D6;318|Steel Gray Light|ABABAB;414|Steel Gray Dark|8C8C8C;168|Pewter Very Light|D1D1D1;169|Pewter Light|848484;317|Pewter Gray|6C6C6C;413|Pewter Gray Dark|565656;3799|Pewter Gray Very Dark|424242;310|Black|000000;01|White Tin|E3E3E6;02|Tin|D7D7D8;03|Tin Medium|B8B8BB;04|Tin Dark|AEAEB1;05|Driftwood Light|E3CCBE;06|Driftwood Medium Light|DCC6B8;07|Driftwood|8F7B6E;08|Driftwood Dark|6A5046;09|Cocoa Very Dark|55200E;10|Tender Green Very Light|EDFED9;11|Tender Green Light|E2EDB5;12|Tender Green|CDD99A;13|Nile Green Medium Light|BFF6E0;14|Apple Green Pale|D0FBB2;15|Apple Green|D1EDA4;16|Chartreuse Light|C9C258;17|Yellow Plum Light|E5E272;18|Yellow Plum|D9D56D;19|Autumn Gold medium Light|F7C95F;20|Shrimp|F7AF93;21|Alizarin Light|D79982;22|Alizarin|BC604E;23|Apple Blossom|EDE2ED;24|White Lavender|E0D7EE;25|Lavender Ultra Light|DAD2E9;26|Lavender Pale|D7CAE6;27|White Violet|F0EEF9;28|Eggplant Medium Light|9086A9;29|Eggplant|674076;30|Blueberry Medium Light|7D77A5;31|Blueberry|50518D;32|Blueberry Dark|4D2E8A;33|Fuschia|9C599E;34|Fuschia Dark|7D3064;35|Fuschia Very Dark|46052D';
+  var DMC = DMC_RAW.split(';').map(function (row, i) {
+    var p = row.split('|');
+    var hex = p[2];
+    var rgb = [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+    return { index: i, code: p[0], name: p[1], hex: '#' + hex, rgb: rgb, lab: rgbToLab(rgb) };
+  });
+  var DMC_BY_CODE = {};
+  DMC.forEach(function (f) { DMC_BY_CODE[f.code] = f; });
+
+  // ---------- color science ----------
+  function srgbToLinear(c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+  function rgbToLab(rgb) {
+    var r = srgbToLinear(rgb[0]), g = srgbToLinear(rgb[1]), b = srgbToLinear(rgb[2]);
+    var x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
+    var y = (r * 0.2126 + g * 0.7152 + b * 0.0722);
+    var z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+    function f(t) { return t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116; }
+    var fx = f(x), fy = f(y), fz = f(z);
+    return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+  }
+  function dE76(a, b) { var d0 = a[0] - b[0], d1 = a[1] - b[1], d2 = a[2] - b[2]; return Math.sqrt(d0 * d0 + d1 * d1 + d2 * d2); }
+  function dE2000(l1, l2) {
+    var rad = Math.PI / 180, deg = 180 / Math.PI;
+    var L1 = l1[0], a1 = l1[1], b1 = l1[2], L2 = l2[0], a2 = l2[1], b2 = l2[2];
+    var C1 = Math.hypot(a1, b1), C2 = Math.hypot(a2, b2), Cb = (C1 + C2) / 2;
+    var G = 0.5 * (1 - Math.sqrt(Math.pow(Cb, 7) / (Math.pow(Cb, 7) + Math.pow(25, 7))));
+    var a1p = a1 * (1 + G), a2p = a2 * (1 + G);
+    var C1p = Math.hypot(a1p, b1), C2p = Math.hypot(a2p, b2);
+    var h1p = Math.atan2(b1, a1p) * deg; if (h1p < 0) h1p += 360;
+    var h2p = Math.atan2(b2, a2p) * deg; if (h2p < 0) h2p += 360;
+    var dLp = L2 - L1, dCp = C2p - C1p, dhp = 0;
+    if (C1p * C2p !== 0) { dhp = h2p - h1p; if (dhp > 180) dhp -= 360; else if (dhp < -180) dhp += 360; }
+    var dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin(dhp * rad / 2);
+    var Lbp = (L1 + L2) / 2, Cbp = (C1p + C2p) / 2, hbp = h1p + h2p;
+    if (C1p * C2p !== 0) { hbp = Math.abs(h1p - h2p) > 180 ? (h1p + h2p + (h1p + h2p < 360 ? 360 : -360)) / 2 : (h1p + h2p) / 2; }
+    var T = 1 - 0.17 * Math.cos((hbp - 30) * rad) + 0.24 * Math.cos(2 * hbp * rad) + 0.32 * Math.cos((3 * hbp + 6) * rad) - 0.2 * Math.cos((4 * hbp - 63) * rad);
+    var dTh = 30 * Math.exp(-Math.pow((hbp - 275) / 25, 2));
+    var Rc = 2 * Math.sqrt(Math.pow(Cbp, 7) / (Math.pow(Cbp, 7) + Math.pow(25, 7)));
+    var Sl = 1 + 0.015 * Math.pow(Lbp - 50, 2) / Math.sqrt(20 + Math.pow(Lbp - 50, 2));
+    var Sc = 1 + 0.045 * Cbp, Sh = 1 + 0.015 * Cbp * T, Rt = -Math.sin(2 * dTh * rad) * Rc;
+    return Math.sqrt(Math.pow(dLp / Sl, 2) + Math.pow(dCp / Sc, 2) + Math.pow(dHp / Sh, 2) + Rt * (dCp / Sc) * (dHp / Sh));
+  }
+  function nearestDmc(lab) {
+    var best = 0, bd = Infinity;
+    for (var i = 0; i < DMC.length; i++) { var d = dE2000(lab, DMC[i].lab); if (d < bd) { bd = d; best = i; } }
+    return best;
+  }
+
+  // ---------- Blanks ----------
+  var PRESET_SHAPES = [
+    { id: 'round-1.5', label: 'Round 1.5"', outline: 'ellipse', wIn: 1.5, hIn: 1.5 },
+    { id: 'round-2', label: 'Round 2"', outline: 'ellipse', wIn: 2, hIn: 2 },
+    { id: 'heart-2', label: 'Heart 2"', outline: 'heart', wIn: 2, hIn: 2 },
+    { id: 'square-2', label: 'Square 2"', outline: 'rect', wIn: 2, hIn: 2 },
+    { id: 'hexagon-2', label: 'Hexagon 2"', outline: 'hexagon', wIn: 2, hIn: 2 },
+    { id: 'oval-1.5x2', label: 'Oval 1.5×2"', outline: 'ellipse', wIn: 1.5, hIn: 2 },
+    { id: 'rect-1.5x2.5', label: 'Rectangle 1.5×2.5"', outline: 'rect', wIn: 1.5, hIn: 2.5 },
+    { id: 'pc-round-3', label: 'Round 3" plastic canvas', outline: 'ellipse', wIn: 3, hIn: 3, count: 7, finish: 'overcast' },
+    { id: 'pc-square-2.5', label: 'Square 2.5" plastic canvas', outline: 'rect', wIn: 2.5, hIn: 2.5, count: 10, finish: 'overcast' }
+  ];
+  var FABRIC_COUNTS = [7, 10, 11, 14, 16, 18];
+  var OVERCAST_COUNTS = [7, 10, 14];
+
+  function presetById(id) {
+    for (var i = 0; i < PRESET_SHAPES.length; i++) if (PRESET_SHAPES[i].id === id) return PRESET_SHAPES[i];
+    throw new Error('Unknown Preset Shape: ' + id);
+  }
+  function insideOutline(outline, u, v) { // u, v in [-1, 1], v down
+    if (outline === 'rect') return true;
+    if (outline === 'ellipse') return u * u + v * v <= 1;
+    if (outline === 'hexagon') { // flat-topped
+      var au = Math.abs(u), av = Math.abs(v);
+      return av <= 0.866 && au <= 1 - av / (2 * 0.866) * 1;
+    }
+    if (outline === 'heart') {
+      var x = u * 1.15, y = -v * 1.15 + 0.25;
+      var t = x * x + y * y - 1;
+      return t * t * t - x * x * y * y * y <= 0;
+    }
+    return true;
+  }
+  // Stitch grid and inside-the-shape mask for a Blank.
+  function blankGrid(blank) {
+    var cols, rows, outline;
+    if (blank.shape === 'preset') {
+      var p = presetById(blank.presetId);
+      cols = Math.max(1, Math.round(p.wIn * blank.count)); rows = Math.max(1, Math.round(p.hIn * blank.count)); outline = p.outline;
+    } else if (blank.shape === 'custom') {
+      cols = Math.max(1, Math.round(blank.wIn * blank.count)); rows = Math.max(1, Math.round(blank.hIn * blank.count)); outline = 'rect';
+    } else if (blank.shape === 'cutout') {
+      cols = rows = Math.max(1, Math.round(blank.longIn * blank.count)); outline = 'rect';
+    } else throw new Error('Unknown Blank shape: ' + blank.shape);
+    var inside = new Uint8Array(cols * rows);
+    for (var y = 0; y < rows; y++) for (var x = 0; x < cols; x++) {
+      inside[y * cols + x] = insideOutline(outline, ((x + 0.5) / cols) * 2 - 1, ((y + 0.5) / rows) * 2 - 1) ? 1 : 0;
+    }
+    return { cols: cols, rows: rows, inside: inside };
+  }
+
+  // ---------- image → grid ----------
+  // Area-average an RGBA image down to cols×rows. Alpha-weighted, so Background (alpha 0) never tints a Stitch.
+  function downsample(img, cols, rows) {
+    var out = new Float64Array(cols * rows * 4);
+    var acc = new Float64Array(cols * rows * 5);
+    var W = img.width, H = img.height, d = img.data;
+    for (var py = 0; py < H; py++) {
+      var gy = Math.min(rows - 1, Math.floor(py * rows / H));
+      for (var px = 0; px < W; px++) {
+        var gx = Math.min(cols - 1, Math.floor(px * cols / W));
+        var i = (py * W + px) * 4, a = d[i + 3] / 255, k = (gy * cols + gx) * 5;
+        acc[k] += d[i] * a; acc[k + 1] += d[i + 1] * a; acc[k + 2] += d[i + 2] * a; acc[k + 3] += a; acc[k + 4] += 1;
+      }
+    }
+    for (var c = 0; c < cols * rows; c++) {
+      var w = acc[c * 5 + 3], n = acc[c * 5 + 4] || 1;
+      out[c * 4] = w ? acc[c * 5] / w : 0; out[c * 4 + 1] = w ? acc[c * 5 + 1] / w : 0; out[c * 4 + 2] = w ? acc[c * 5 + 2] / w : 0;
+      out[c * 4 + 3] = (w / n) * 255;
+    }
+    return out;
+  }
+
+  // ---------- Background ----------
+  var labCache = typeof WeakMap === 'function' ? new WeakMap() : null;
+  function imageLabs(img) {
+    var hit = labCache && labCache.get(img.data);
+    if (hit) return hit;
+    var n = img.width * img.height, out = new Float32Array(n * 3), d = img.data, memo = {};
+    for (var i = 0; i < n; i++) {
+      var key = (d[i * 4] << 16) | (d[i * 4 + 1] << 8) | d[i * 4 + 2], lab = memo[key];
+      if (!lab) lab = memo[key] = rgbToLab([d[i * 4], d[i * 4 + 1], d[i * 4 + 2]]);
+      out[i * 3] = lab[0]; out[i * 3 + 1] = lab[1]; out[i * 3 + 2] = lab[2];
+    }
+    if (labCache) labCache.set(img.data, out);
+    return out;
+  }
+  function labAt(labs, i) { return [labs[i * 3], labs[i * 3 + 1], labs[i * 3 + 2]]; }
+  // Flood fill from seed pixels to 4-connected pixels within `tol` (ΔE) of the reference color.
+  function floodSimilar(img, seeds, ref, tol) {
+    var W = img.width, H = img.height, labs = imageLabs(img), mask = new Uint8Array(W * H), stack = [];
+    function within(i) { return img.data[i * 4 + 3] < 128 || dE76(labAt(labs, i), ref) <= tol; }
+    seeds.forEach(function (i) { if (!mask[i] && within(i)) { mask[i] = 1; stack.push(i); } });
+    while (stack.length) {
+      var c = stack.pop(), x = c % W, y = (c - x) / W;
+      if (x > 0 && !mask[c - 1] && within(c - 1)) { mask[c - 1] = 1; stack.push(c - 1); }
+      if (x < W - 1 && !mask[c + 1] && within(c + 1)) { mask[c + 1] = 1; stack.push(c + 1); }
+      if (y > 0 && !mask[c - W] && within(c - W)) { mask[c - W] = 1; stack.push(c - W); }
+      if (y < H - 1 && !mask[c + W] && within(c + W)) { mask[c + W] = 1; stack.push(c + W); }
+    }
+    return mask;
+  }
+  // Magic wand: the connected region around (x, y) whose color is within `tol` of the tapped pixel.
+  function magicWand(img, x, y, tol) {
+    var i = Math.floor(y) * img.width + Math.floor(x);
+    return floodSimilar(img, [i], labAt(imageLabs(img), i), tol);
+  }
+  // Remove-border: the dominant edge color, filled inward from every edge pixel that matches it.
+  function removeBorder(img, tol) {
+    var W = img.width, H = img.height, labs = imageLabs(img), border = [];
+    for (var x = 0; x < W; x++) { border.push(x); border.push((H - 1) * W + x); }
+    for (var y = 1; y < H - 1; y++) { border.push(y * W); border.push(y * W + W - 1); }
+    var step = Math.max(1, Math.floor(border.length / 200)), sample = [];
+    for (var k = 0; k < border.length; k += step) sample.push(labAt(labs, border[k]));
+    var ref = sample[0], best = -1;
+    sample.forEach(function (a) {
+      var n = 0; sample.forEach(function (b) { if (dE76(a, b) <= tol) n++; });
+      if (n > best) { best = n; ref = a; }
+    });
+    return floodSimilar(img, border, ref, tol);
+  }
+  function alphaMask(img) {
+    var n = img.width * img.height, m = new Uint8Array(n);
+    for (var i = 0; i < n; i++) m[i] = img.data[i * 4 + 3] < 128 ? 1 : 0;
+    return m;
+  }
+  // Run-length encoding for saving masks: alternating runs of 0s and 1s (starting with 0s), base 36.
+  function encodeMask(m) {
+    var runs = [], cur = 0, run = 0;
+    for (var i = 0; i < m.length; i++) { var v = m[i] ? 1 : 0; if (v === cur) run++; else { runs.push(run.toString(36)); cur = v; run = 1; } }
+    runs.push(run.toString(36));
+    return runs.join(',');
+  }
+  function decodeMask(str, n) {
+    var m = new Uint8Array(n), pos = 0, v = 0;
+    str.split(',').forEach(function (r) { var len = parseInt(r, 36); if (v) m.fill(1, pos, pos + len); pos += len; v ^= 1; });
+    return m;
+  }
+
+  // ---------- reduction ----------
+  function mulberry32(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+  function kmeans(labs, k) {
+    var rnd = mulberry32(42), n = labs.length, centers = [labs[Math.floor(rnd() * n)]];
+    var dist = new Float64Array(n).fill(Infinity);
+    while (centers.length < k) {
+      var last = centers[centers.length - 1], sum = 0;
+      for (var i = 0; i < n; i++) { var dd = dE76(labs[i], last); dd *= dd; if (dd < dist[i]) dist[i] = dd; sum += dist[i]; }
+      if (sum === 0) break;
+      var r = rnd() * sum, j = 0;
+      for (; j < n - 1; j++) { r -= dist[j]; if (r <= 0) break; }
+      centers.push(labs[j]);
+    }
+    var assign = new Int32Array(n);
+    for (var it = 0; it < 15; it++) {
+      var sums = centers.map(function () { return [0, 0, 0, 0]; });
+      for (i = 0; i < n; i++) {
+        var b = 0, bd = Infinity;
+        for (var c = 0; c < centers.length; c++) { var d2 = dE76(labs[i], centers[c]); if (d2 < bd) { bd = d2; b = c; } }
+        assign[i] = b; var s = sums[b]; s[0] += labs[i][0]; s[1] += labs[i][1]; s[2] += labs[i][2]; s[3]++;
+      }
+      centers = centers.map(function (cc, ci) { var s = sums[ci]; return s[3] ? [s[0] / s[3], s[1] / s[3], s[2] / s[3]] : cc; });
+    }
+    return centers;
+  }
+
+  // Reduce stitched cells to at most colorCount DMC Flosses; returns cells (DMC index or -1).
+  function reduce(grid, inside, cols, rows, colorCount) {
+    var labs = [], idx = [];
+    for (var c = 0; c < cols * rows; c++) {
+      if (!inside[c] || grid[c * 4 + 3] < 128) continue;
+      labs.push(rgbToLab([grid[c * 4], grid[c * 4 + 1], grid[c * 4 + 2]])); idx.push(c);
+    }
+    var cells = new Array(cols * rows).fill(-1);
+    if (!labs.length) return cells;
+    var centers = kmeans(labs, Math.max(1, Math.min(colorCount, labs.length)));
+    var flosses = [];
+    centers.forEach(function (ctr) { var f = nearestDmc(ctr); if (flosses.indexOf(f) < 0) flosses.push(f); });
+    for (var i = 0; i < labs.length; i++) {
+      var b = flosses[0], bd = Infinity;
+      for (var j = 0; j < flosses.length; j++) { var d = dE2000(labs[i], DMC[flosses[j]].lab); if (d < bd) { bd = d; b = flosses[j]; } }
+      cells[idx[i]] = b;
+    }
+    return cells;
+  }
+
+  function allowedFinishes(blank) { return blank.shape === 'cutout' ? ['overcast'] : ['framed', 'overcast']; }
+  function allowedCounts(blank) { return blank.finish === 'overcast' || blank.shape === 'cutout' ? OVERCAST_COUNTS.slice() : FABRIC_COUNTS.slice(); }
+
+  // Confetti cleanup: connected groups of at most `strength` Stitches take their most common neighbouring Floss.
+  function cleanConfetti(cells, cols, rows, strength) {
+    if (!strength) return cells;
+    cells = cells.slice();
+    for (var pass = 0; pass < 4; pass++) {
+      var seen = new Uint8Array(cols * rows), changed = false;
+      for (var start = 0; start < cells.length; start++) {
+        if (seen[start] || cells[start] < 0) continue;
+        var f = cells[start], comp = [start], q = 0, nb = {};
+        seen[start] = 1;
+        while (q < comp.length) {
+          var c = comp[q++], x = c % cols, y = (c - x) / cols;
+          [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]].forEach(function (pt) {
+            if (pt[0] < 0 || pt[1] < 0 || pt[0] >= cols || pt[1] >= rows) return;
+            var n = pt[1] * cols + pt[0], g = cells[n];
+            if (g === f) { if (!seen[n]) { seen[n] = 1; comp.push(n); } }
+            else if (g >= 0) nb[g] = (nb[g] || 0) + 1;
+          });
+        }
+        if (comp.length > strength) continue;
+        var best = -1, bn = 0;
+        Object.keys(nb).forEach(function (k) { if (nb[k] > bn) { bn = nb[k]; best = +k; } });
+        if (best < 0) continue;
+        comp.forEach(function (c2) { cells[c2] = best; });
+        changed = true;
+      }
+      if (!changed) break;
+    }
+    return cells;
+  }
+
+  // ---------- Pattern ----------
+  function orderPalette(cells, keep) {
+    var counts = {};
+    cells.forEach(function (f) { if (f >= 0) counts[f] = (counts[f] || 0) + 1; });
+    var list = Object.keys(counts).map(Number);
+    (keep || []).forEach(function (f) { if (list.indexOf(f) < 0) list.push(f); });
+    return list.sort(function (a, b) { return (counts[b] || 0) - (counts[a] || 0) || a - b; });
+  }
+
+  function createPattern(opts) {
+    var blank = opts.blank, g = blankGrid(blank);
+    var grid = downsample(opts.image, g.cols, g.rows);
+    var confetti = opts.confetti == null ? 1 : opts.confetti;
+    var cells = cleanConfetti(reduce(grid, g.inside, g.cols, g.rows, opts.colorCount || 6), g.cols, g.rows, confetti);
+    var pal = orderPalette(cells);
+    var overcast = isOvercast(blank) ? (opts.overcast ? JSON.parse(JSON.stringify(opts.overcast)) : defaultOvercast(blank, g.cols, pal)) : null;
+    return {
+      v: 1, blank: blank, cols: g.cols, rows: g.rows,
+      colorCount: opts.colorCount || 6, confetti: confetti,
+      cells: cells, palette: pal, overcast: overcast, past: [], future: []
+    };
+  }
+
+  // ---------- editing ----------
+  var HISTORY_LIMIT = 100;
+  function snapshot(p) { return { cells: p.cells.slice(), palette: p.palette.slice(), overcast: JSON.parse(JSON.stringify(p.overcast || null)) }; }
+  function withSnap(p, snap, past, future) {
+    var q = {}; Object.keys(p).forEach(function (k) { q[k] = p[k]; });
+    q.cells = snap.cells; q.palette = snap.palette; q.overcast = snap.overcast; q.past = past; q.future = future;
+    return q;
+  }
+  function flossIndex(code) {
+    var f = DMC_BY_CODE[code];
+    if (!f) throw new Error('Unknown DMC Floss: ' + code);
+    return f.index;
+  }
+  function insideOf(p) { return blankGrid(p.blank).inside; }
+
+  // Apply one Pattern edit; returns a new Pattern with the edit recorded for undo.
+  function apply(p, cmd) {
+    var next = snapshot(p), cells = next.cells, pal = next.palette, i;
+    switch (cmd.type) {
+      case 'merge': case 'swap': {
+        var from = flossIndex(cmd.from), to = flossIndex(cmd.type === 'merge' ? cmd.into : cmd.to);
+        for (i = 0; i < cells.length; i++) if (cells[i] === from) cells[i] = to;
+        var at = pal.indexOf(from);
+        if (pal.indexOf(to) >= 0) pal.splice(at, 1); else pal[at] = to;
+        break;
+      }
+      case 'unstitch': {
+        var f = flossIndex(cmd.floss);
+        for (i = 0; i < cells.length; i++) if (cells[i] === f) cells[i] = -1;
+        pal.splice(pal.indexOf(f), 1);
+        break;
+      }
+      case 'addFloss': {
+        var a = flossIndex(cmd.floss);
+        if (pal.indexOf(a) < 0) pal.push(a);
+        break;
+      }
+      case 'paint': case 'erase': {
+        var inside = insideOf(p), v = cmd.type === 'paint' ? flossIndex(cmd.floss) : -1;
+        if (v >= 0 && pal.indexOf(v) < 0) pal.push(v);
+        cmd.cells.forEach(function (xy) {
+          var x = xy[0], y = xy[1];
+          if (x < 0 || y < 0 || x >= p.cols || y >= p.rows) return;
+          var c = y * p.cols + x;
+          if (inside[c]) cells[c] = v;
+        });
+        break;
+      }
+      default:
+        if (overcastApply(p, next, cmd)) break;
+        throw new Error('Unknown edit: ' + cmd.type);
+    }
+    var past = (p.past || []).concat([snapshot(p)]);
+    if (past.length > HISTORY_LIMIT) past = past.slice(past.length - HISTORY_LIMIT);
+    return withSnap(p, next, past, []);
+  }
+  // ---------- Overcast: Cut Line, Ring Hole, Edge Stitches ----------
+  var MAX_RING = 4, PAD = 2 + (MAX_RING + 2) + 1;
+  function isOvercast(blank) { return blank.finish === 'overcast' || blank.shape === 'cutout'; }
+  function defaultOvercast(blank, cols, palette) {
+    return {
+      margin: blank.shape === 'cutout' ? 1 : 0,
+      ring: { mode: 'outside', x: Math.floor(cols / 2), y: -3, size: 2 },
+      edge: { mode: 'whole', floss: palette.length ? DMC[palette[0]].code : '310', overrides: {} }
+    };
+  }
+  function overcastApply(p, next, cmd) {
+    var o = next.overcast;
+    if (!o) return false;
+    if (cmd.type === 'margin') o.margin = Math.max(0, Math.min(2, Math.round(cmd.margin)));
+    else if (cmd.type === 'ring') {
+      ['mode', 'x', 'y', 'size'].forEach(function (k) { if (cmd[k] != null) o.ring[k] = cmd[k]; });
+      o.ring.size = Math.max(1, Math.min(MAX_RING, Math.round(o.ring.size)));
+    } else if (cmd.type === 'edgeMode') {
+      o.edge.mode = cmd.mode;
+      if (cmd.floss) { flossIndex(cmd.floss); o.edge.floss = cmd.floss; }
+    } else if (cmd.type === 'edgePaint') {
+      flossIndex(cmd.floss);
+      cmd.segments.forEach(function (id) { o.edge.overrides[id] = cmd.floss; });
+    } else if (cmd.type === 'edgeClear') o.edge.overrides = {};
+    else return false;
+    return true;
+  }
+
+  var layoutCache = typeof WeakMap === 'function' ? new WeakMap() : null;
+  function overcastLayout(p) {
+    if (!isOvercast(p.blank) || !p.overcast) return null;
+    var hit = layoutCache && layoutCache.get(p);
+    if (hit) return hit;
+    var o = p.overcast, C = p.cols + 2 * PAD, R = p.rows + 2 * PAD, N = C * R, i, x, y;
+    function L(dx, dy) { return (dy + PAD) * C + (dx + PAD); }
+    function inGrid(lx, ly) { return lx >= 0 && ly >= 0 && lx < C && ly < R; }
+    var cut = new Uint8Array(N), hole = new Uint8Array(N);
+    // 1. Base cut: the Preset Shape outline, or the Cut-Out's filled stitched area grown by the Margin.
+    if (p.blank.shape === 'cutout') {
+      var stitched = new Uint8Array(N), outside = new Uint8Array(N), stack = [];
+      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (p.cells[y * p.cols + x] >= 0) stitched[L(x, y)] = 1;
+      for (x = 0; x < C; x++) { stack.push(x, (R - 1) * C + x); }
+      for (y = 0; y < R; y++) { stack.push(y * C, y * C + C - 1); }
+      while (stack.length) {
+        var c = stack.pop();
+        if (outside[c] || stitched[c]) continue;
+        outside[c] = 1;
+        var cx = c % C, cy = (c - cx) / C;
+        if (cx > 0) stack.push(c - 1); if (cx < C - 1) stack.push(c + 1);
+        if (cy > 0) stack.push(c - C); if (cy < R - 1) stack.push(c + C);
+      }
+      for (i = 0; i < N; i++) cut[i] = outside[i] ? 0 : 1;
+      for (var m = 0; m < o.margin; m++) {
+        var grown = cut.slice();
+        for (y = 0; y < R; y++) for (x = 0; x < C; x++) {
+          if (cut[y * C + x]) continue;
+          for (var ny = -1; ny <= 1; ny++) for (var nx = -1; nx <= 1; nx++)
+            if (inGrid(x + nx, y + ny) && cut[(y + ny) * C + x + nx]) grown[y * C + x] = 1;
+        }
+        cut = grown;
+      }
+    } else {
+      var inside = blankGrid(p.blank).inside;
+      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (inside[y * p.cols + x]) cut[L(x, y)] = 1;
+    }
+    // 2. Ring Hole: on a Ring Tab outside the design, or cut inside it.
+    var ring = o.ring, s = ring.size;
+    if (ring.mode === 'inside') {
+      var hx = Math.round(ring.x - s / 2), hy = Math.round(ring.y - s / 2);
+      hx = Math.max(0, Math.min(p.cols - s, hx)); hy = Math.max(0, Math.min(p.rows - s, hy));
+      for (y = hy; y < hy + s; y++) for (x = hx; x < hx + s; x++) { var k = L(x, y); hole[k] = 1; cut[k] = 0; }
+    } else if (ring.mode === 'outside') {
+      var best = null, bd = Infinity, DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+      for (y = 0; y < R; y++) for (x = 0; x < C; x++) {
+        if (!cut[y * C + x]) continue;
+        var edgeCell = DIRS.some(function (d) { return !inGrid(x + d[0], y + d[1]) || !cut[(y + d[1]) * C + x + d[0]]; });
+        if (!edgeCell) continue;
+        var dd = Math.hypot(x - PAD - ring.x, y - PAD - ring.y);
+        if (dd < bd) { bd = dd; best = [x, y]; }
+      }
+      if (best) {
+        var tx = ring.x + PAD - best[0], ty = ring.y + PAD - best[1], dir = null, dot = -Infinity;
+        DIRS.forEach(function (d) {
+          var ox = best[0] + d[0], oy = best[1] + d[1];
+          if (inGrid(ox, oy) && cut[oy * C + ox]) return;
+          var v = d[0] * tx + d[1] * ty;
+          if (v > dot) { dot = v; dir = d; }
+        });
+        var t = s + 2, half = Math.floor(t / 2);
+        var place = function (along, across, isHole) {
+          var lx = best[0] + dir[0] * along + (dir[0] === 0 ? across : 0);
+          var ly = best[1] + dir[1] * along + (dir[1] === 0 ? across : 0);
+          if (!inGrid(lx, ly)) return;
+          if (isHole) { hole[ly * C + lx] = 1; cut[ly * C + lx] = 0; } else cut[ly * C + lx] = 1;
+        };
+        for (var al = 0; al < t; al++) for (var ac = -half; ac < t - half; ac++) place(al, ac, false);
+        for (al = 1; al <= s; al++) for (ac = -half + 1; ac <= -half + s; ac++) place(al, ac, true);
+      }
+    }
+    // 3. Effective Stitches: anything inside a Ring Hole is Unstitched.
+    var cells = p.cells.slice();
+    for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (hole[L(x, y)]) cells[y * p.cols + x] = -1;
+    // 4. Nearest Stitch's Floss for every layout cell (for auto-match).
+    var nearest = new Int32Array(N).fill(-1), queue = [];
+    for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) {
+      var f = cells[y * p.cols + x];
+      if (f >= 0) { nearest[L(x, y)] = f; queue.push(L(x, y)); }
+    }
+    for (var q = 0; q < queue.length; q++) {
+      var cc = queue[q], qx = cc % C, qy = (cc - qx) / C;
+      [[qx - 1, qy], [qx + 1, qy], [qx, qy - 1], [qx, qy + 1]].forEach(function (pt) {
+        if (!inGrid(pt[0], pt[1])) return;
+        var n2 = pt[1] * C + pt[0];
+        if (nearest[n2] < 0) { nearest[n2] = nearest[cc]; queue.push(n2); }
+      });
+    }
+    // 5. Edge Stitches: one per cut edge.
+    var edges = [], SIDES = [['n', 0, -1], ['s', 0, 1], ['w', -1, 0], ['e', 1, 0]];
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (y = 0; y < R; y++) for (x = 0; x < C; x++) {
+      if (!cut[y * C + x]) continue;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+      SIDES.forEach(function (sd) {
+        var ox = x + sd[1], oy = y + sd[2];
+        if (inGrid(ox, oy) && cut[oy * C + ox]) return;
+        var id = (x - PAD) + ',' + (y - PAD) + ',' + sd[0];
+        var floss = o.edge.overrides[id] ||
+          (o.edge.mode === 'match' && nearest[y * C + x] >= 0 ? DMC[nearest[y * C + x]].code : o.edge.floss);
+        edges.push({ id: id, x: x, y: y, side: sd[0], floss: floss });
+      });
+    }
+    function inches(n) { return Math.round(n / p.blank.count * 1000) / 1000; }
+    var design;
+    if (p.blank.shape === 'cutout') {
+      var sx0 = Infinity, sy0 = Infinity, sx1 = -1, sy1 = -1;
+      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (p.cells[y * p.cols + x] >= 0) {
+        sx0 = Math.min(sx0, x); sy0 = Math.min(sy0, y); sx1 = Math.max(sx1, x); sy1 = Math.max(sy1, y);
+      }
+      design = sx1 < 0 ? { w: 0, h: 0 } : { w: inches(sx1 - sx0 + 1), h: inches(sy1 - sy0 + 1) };
+    } else design = { w: inches(p.cols), h: inches(p.rows) };
+    var out = {
+      cols: C, rows: R, offset: PAD, cut: cut, hole: hole, edges: edges, cells: cells,
+      bounds: x1 < 0 ? null : { x0: x0, y0: y0, x1: x1, y1: y1 },
+      designSize: design,
+      overallSize: x1 < 0 ? { w: 0, h: 0 } : { w: inches(x1 - x0 + 1), h: inches(y1 - y0 + 1) }
+    };
+    if (layoutCache) layoutCache.set(p, out);
+    return out;
+  }
+  // The Pattern's Stitches as stitched: Ring Hole cells are Unstitched.
+  function effectiveCells(p) { var L = overcastLayout(p); return L ? L.cells : p.cells; }
+  function edgeLegend(p) {
+    var L = overcastLayout(p);
+    if (!L) return [];
+    var counts = {};
+    L.edges.forEach(function (e) { counts[e.floss] = (counts[e.floss] || 0) + 1; });
+    return Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; }).map(function (code) {
+      var f = DMC_BY_CODE[code]; return { code: code, name: f.name, hex: f.hex, count: counts[code] };
+    });
+  }
+  function canUndo(p) { return !!(p.past && p.past.length); }
+  function canRedo(p) { return !!(p.future && p.future.length); }
+  function isEdited(p) { return canUndo(p); }
+  function undo(p) {
+    if (!canUndo(p)) return p;
+    return withSnap(p, p.past[p.past.length - 1], p.past.slice(0, -1), [snapshot(p)].concat(p.future || []));
+  }
+  function redo(p) {
+    if (!canRedo(p)) return p;
+    return withSnap(p, p.future[0], (p.past || []).concat([snapshot(p)]), p.future.slice(1));
+  }
+
+  // ---------- saving ----------
+  // Cells are stored against DMC codes, not table positions, so saved Patterns survive table changes.
+  function portable(snap) {
+    var codes = snap.palette.map(function (i) { return DMC[i].code; }), extra = {};
+    snap.cells.forEach(function (f) { if (f >= 0 && snap.palette.indexOf(f) < 0 && !extra[f]) extra[f] = 1; });
+    Object.keys(extra).forEach(function (f) { codes.push(DMC[f].code); });
+    var all = codes.map(flossIndex);
+    return { codes: codes, paletteLength: snap.palette.length, cells: snap.cells.map(function (f) { return f < 0 ? -1 : all.indexOf(f); }), overcast: snap.overcast };
+  }
+  function unportable(o) {
+    var all = o.codes.map(flossIndex);
+    return { palette: all.slice(0, o.paletteLength), cells: o.cells.map(function (k) { return k < 0 ? -1 : all[k]; }), overcast: o.overcast || null };
+  }
+  function serialize(p) {
+    return {
+      v: 1, blank: p.blank, cols: p.cols, rows: p.rows, colorCount: p.colorCount, confetti: p.confetti,
+      now: portable(snapshot(p)), past: (p.past || []).map(portable), future: (p.future || []).map(portable)
+    };
+  }
+  function deserialize(o) {
+    if (!o || o.v !== 1) throw new Error('Unrecognised saved Pattern');
+    var base = { v: 1, blank: o.blank, cols: o.cols, rows: o.rows, colorCount: o.colorCount, confetti: o.confetti };
+    return withSnap(base, unportable(o.now), o.past.map(unportable), o.future.map(unportable));
+  }
+
+  // ---------- Chart ----------
+  // High-contrast glyphs available in every PDF viewer's Helvetica; order = Palette order.
+  var SYMBOLS = 'X O + S # = @ Z H N V T A K W U Y M P D 2 3 4 5 6 7 8 9 E F G J L R B C Q % & ?'.split(' ');
+  function num(n) { return String(Math.round(n * 100) / 100); }
+  function blankLabel(blank) {
+    if (blank.shape === 'preset') return presetById(blank.presetId).label;
+    if (blank.shape === 'custom') return 'Custom ' + num(blank.wIn) + '×' + num(blank.hIn) + '"';
+    return 'Cut-Out, ' + num(blank.longIn) + '" longest side';
+  }
+  function lines(n) { var a = []; for (var b = 0; b < n; b += 10) a.push(b); a.push(n); return a; }
+  function chartLayout(p) {
+    var L = overcastLayout(p), cells = effectiveCells(p), pal = p.palette, symbolOf = {};
+    pal.forEach(function (f, i) { symbolOf[f] = SYMBOLS[i % SYMBOLS.length]; });
+    var x0, y0, w, h;
+    if (L) { x0 = L.bounds.x0 - L.offset; y0 = L.bounds.y0 - L.offset; w = L.bounds.x1 - L.bounds.x0 + 1; h = L.bounds.y1 - L.bounds.y0 + 1; }
+    else { x0 = 0; y0 = 0; w = p.cols; h = p.rows; }
+    var out = { width: w, height: h, cells: [], outline: [], edges: [], holes: [], boldLinesX: lines(w), boldLinesY: lines(h) };
+    for (var y = 0; y < p.rows; y++) for (var x = 0; x < p.cols; x++) {
+      var f = cells[y * p.cols + x];
+      if (f >= 0) out.cells.push({ x: x - x0, y: y - y0, symbol: symbolOf[f], hex: DMC[f].hex, code: DMC[f].code });
+    }
+    var counts = {};
+    cells.forEach(function (f) { if (f >= 0) counts[f] = (counts[f] || 0) + 1; });
+    out.legend = pal.map(function (f) { var o = flossOut(f); o.symbol = symbolOf[f]; o.count = counts[f] || 0; return o; });
+    var next = pal.length;
+    out.edgeLegend = edgeLegend(p).map(function (e) {
+      var i = flossIndex(e.code);
+      if (!symbolOf[i]) symbolOf[i] = SYMBOLS[next++ % SYMBOLS.length];
+      e.symbol = symbolOf[i]; return e;
+    });
+    if (L) {
+      L.edges.forEach(function (e) {
+        var seg = { x: e.x - L.bounds.x0, y: e.y - L.bounds.y0, side: e.side };
+        out.outline.push(seg);
+        out.edges.push({ x: seg.x, y: seg.y, side: e.side, code: e.floss, hex: DMC_BY_CODE[e.floss].hex, symbol: symbolOf[flossIndex(e.floss)] });
+      });
+      for (var i = 0; i < L.hole.length; i++) if (L.hole[i]) {
+        var hx = i % L.cols, hy = (i - hx) / L.cols;
+        out.holes.push({ x: hx - L.bounds.x0, y: hy - L.bounds.y0 });
+      }
+    } else {
+      var inside = blankGrid(p.blank).inside;
+      var isIn = function (cx, cy) { return cx >= 0 && cy >= 0 && cx < p.cols && cy < p.rows && inside[cy * p.cols + cx]; };
+      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) {
+        if (!isIn(x, y)) continue;
+        if (!isIn(x, y - 1)) out.outline.push({ x: x, y: y, side: 'n' });
+        if (!isIn(x, y + 1)) out.outline.push({ x: x, y: y, side: 's' });
+        if (!isIn(x - 1, y)) out.outline.push({ x: x, y: y, side: 'w' });
+        if (!isIn(x + 1, y)) out.outline.push({ x: x, y: y, side: 'e' });
+      }
+    }
+    var size = L ? L.overallSize : { w: p.cols / p.blank.count, h: p.rows / p.blank.count };
+    out.header = {
+      blank: blankLabel(p.blank),
+      finish: isOvercast(p.blank) ? 'Overcast' : 'Framed',
+      count: p.blank.count + 'ct',
+      size: num(size.w) + '" × ' + num(size.h) + '" (' + w + ' × ' + h + ' stitches)'
+    };
+    if (L && p.blank.shape === 'cutout') out.header.design = 'Design ' + num(L.designSize.w) + '" × ' + num(L.designSize.h) + '"';
+    return out;
+  }
+
+  function flossOut(i) { var f = DMC[i]; return { code: f.code, name: f.name, hex: f.hex }; }
+  function cellAt(p, x, y) { var f = effectiveCells(p)[y * p.cols + x]; return f >= 0 ? flossOut(f) : null; }
+  function palette(p) {
+    var counts = {};
+    effectiveCells(p).forEach(function (f) { if (f >= 0) counts[f] = (counts[f] || 0) + 1; });
+    return p.palette.map(function (i) { var o = flossOut(i); o.count = counts[i] || 0; return o; });
+  }
+
+  return {
+    DMC: DMC, PRESET_SHAPES: PRESET_SHAPES, FABRIC_COUNTS: FABRIC_COUNTS, OVERCAST_COUNTS: OVERCAST_COUNTS,
+    magicWand: magicWand, removeBorder: removeBorder, alphaMask: alphaMask, encodeMask: encodeMask, decodeMask: decodeMask,
+    chartLayout: chartLayout, SYMBOLS: SYMBOLS, blankLabel: blankLabel,
+    overcastLayout: overcastLayout, edgeLegend: edgeLegend, isOvercast: isOvercast, effectiveCells: effectiveCells,
+    apply: apply, undo: undo, redo: redo, canUndo: canUndo, canRedo: canRedo, isEdited: isEdited,
+    serialize: serialize, deserialize: deserialize,
+    blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette
+  };
+})();
+</script>
+<script id="app">
+</script>
+</body>
+</html>

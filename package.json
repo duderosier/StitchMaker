@@ -1,0 +1,9 @@
+{
+  "name": "stitch-keychains",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "check": "node test/check-syntax.mjs"
+  }
+}
