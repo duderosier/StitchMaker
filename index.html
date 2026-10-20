@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#FFFFFF">
+<meta name="theme-color" content="#FBF8FC">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -15,19 +15,22 @@
 <title>Stitch Keychains</title>
 <style>
 :root {
-  --snow: #FFFFFF;
-  --aida: #E8ECF3;
-  --aida-hole: #D3DAE6;
-  --ink: #1B2853;
-  --ink-soft: #5A6385;
-  --needle: #E31D42;
-  --teal: #3F7C85;
-  --line: #D6DCE8;
-  --panel: #F5F7FB;
+  --snow: #FBF8FC;
+  --card: #FFFFFF;
+  --aida: #EFE6F2;
+  --aida-hole: #DCCBE2;
+  --ink: #34193A;
+  --ink-soft: #7A6380;
+  --needle: #7A3E9D;
+  --needle-soft: #ECE0F3;
+  --teal: #7A3E9D;
+  --line: #E4D8EA;
+  --panel: #F5EEF8;
+  --shadow: 0 6px 24px rgba(92, 24, 78, .10), 0 1px 3px rgba(92, 24, 78, .08);
   --round: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif;
   --ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --radius-s: 8px;
-  --radius-m: 14px;
+  --radius-s: 12px;
+  --radius-m: 22px;
   --tap: 44px;
   color-scheme: light;
 }
@@ -69,8 +72,8 @@ button { cursor: pointer; }
 .name:focus { outline: none; border-bottom-color: var(--needle); }
 .iconbtn {
   min-width: var(--tap); height: var(--tap);
-  border: 1px solid var(--line); border-radius: 999px;
-  background: var(--snow); padding: 0 12px; font-size: 14px;
+  border: 0; border-radius: 999px;
+  background: var(--panel); padding: 0 12px; font-size: 14px;
 }
 .iconbtn:disabled { opacity: .35; }
 .iconbtn svg { width: 20px; height: 20px; vertical-align: -4px; }
@@ -80,25 +83,26 @@ button { cursor: pointer; }
   grid-area: stage; position: relative; min-height: 0;
   margin: 0 12px; border-radius: var(--radius-m); overflow: hidden;
   background-color: var(--aida);
+  box-shadow: var(--shadow);
   background-image:
     radial-gradient(circle at 50% 50%, var(--aida-hole) 0 1.1px, transparent 1.4px);
   background-size: 7px 7px;
-  box-shadow: inset 0 0 0 1px var(--line);
 }
 #stage { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
 .hint {
   position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
-  background: rgba(27, 40, 83, .82); color: var(--snow);
+  background: rgba(52, 25, 58, .82); color: #fff; backdrop-filter: blur(6px);
   font-size: 13px; padding: 5px 12px; border-radius: 999px; white-space: nowrap;
   pointer-events: none;
 }
 .hint:empty { display: none; }
 .readout {
   position: absolute; left: 10px; top: 10px;
-  background: rgba(255, 255, 255, .88); border-radius: var(--radius-s);
+  background: rgba(255, 255, 255, .9); border-radius: 999px; padding: 4px 10px;
   font-size: 12.5px; padding: 4px 8px; color: var(--ink-soft);
   pointer-events: none;
 }
+.readout:empty { display: none; }
 .empty {
   position: absolute; inset: 0; display: grid; place-content: center; gap: 14px;
   text-align: center; padding: 24px;
@@ -111,7 +115,7 @@ button { cursor: pointer; }
 .panel {
   grid-area: panel;
   max-height: 38dvh; overflow-y: auto; overflow-x: hidden;
-  padding: 10px 12px 6px;
+  padding: 14px 14px 8px;
 }
 .pane { display: none; }
 .pane.on { display: grid; gap: 12px; }
@@ -121,32 +125,34 @@ button { cursor: pointer; }
 input[type=range] { flex: 1; min-width: 120px; accent-color: var(--needle); height: var(--tap); }
 input[type=number], input[type=text], input[type=search], select {
   height: 40px; border: 1px solid var(--line); border-radius: var(--radius-s);
-  background: var(--snow); padding: 0 10px; min-width: 0;
+  background: var(--card); padding: 0 12px; min-width: 0;
 }
 input[type=number] { width: 84px; }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--snow); flex-wrap: wrap; }
+.seg { display: inline-flex; border: 0; border-radius: 999px; padding: 4px; background: var(--panel); flex-wrap: wrap; }
 .seg button {
   border: 0; background: none; border-radius: 999px; min-height: 36px; padding: 0 14px; font-size: 14px;
 }
-.seg button[aria-pressed=true] { background: var(--ink); color: var(--snow); }
+.seg button[aria-pressed=true] { background: var(--card); color: var(--needle); font-weight: 600; box-shadow: 0 1px 4px rgba(92, 24, 78, .16); }
 .seg button:disabled { opacity: .35; }
 .primary {
   min-height: var(--tap); border: 0; border-radius: 999px;
-  background: var(--needle); color: var(--snow); font-weight: 600; padding: 0 20px;
+  background: var(--needle); color: #fff; font-weight: 600; padding: 0 22px;
+  box-shadow: 0 4px 14px rgba(122, 62, 157, .35);
 }
+.primary:active { transform: translateY(1px); box-shadow: 0 2px 8px rgba(122, 62, 157, .3); }
 .secondary {
-  min-height: 40px; border: 1px solid var(--line); border-radius: 999px; background: var(--snow); padding: 0 16px;
+  min-height: 40px; border: 0; border-radius: 999px; background: var(--needle-soft); color: var(--ink); padding: 0 16px;
 }
-.secondary[aria-pressed=true] { border-color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); color: var(--teal); }
+.secondary[aria-pressed=true] { background: var(--needle); color: #fff; }
 .muted { color: var(--ink-soft); font-size: 13px; margin: 0; }
 
 /* Blank shapes */
 .shapes { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
 .shape {
   display: grid; justify-items: center; gap: 4px; padding: 8px 4px;
-  border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--snow); font-size: 12.5px;
+  border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--card); font-size: 12.5px;
 }
-.shape svg { width: 30px; height: 30px; fill: var(--aida); stroke: var(--ink); stroke-width: 1.5; }
+.shape svg { width: 30px; height: 30px; fill: var(--needle-soft); stroke: var(--needle); stroke-width: 1.5; }
 .shape[aria-pressed=true] { border-color: var(--needle); box-shadow: inset 0 0 0 1.5px var(--needle); }
 
 /* Palette */
@@ -154,51 +160,49 @@ input[type=number] { width: 84px; }
 .floss {
   display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px;
   padding: 6px 10px 6px 6px; border: 1px solid var(--line); border-radius: var(--radius-s);
-  background: var(--snow); text-align: left; width: 100%;
+  background: var(--card); text-align: left; width: 100%;
 }
 .floss[aria-pressed=true] { border-color: var(--teal); box-shadow: inset 0 0 0 1.5px var(--teal); }
-.swatch { width: 34px; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(27, 40, 83, .18); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+.swatch { width: 34px; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(52, 25, 58, .16); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
 .floss .code { font-weight: 600; }
 .floss .nm { color: var(--ink-soft); font-size: 13px; }
 .floss .ct { color: var(--ink-soft); font-size: 13px; font-variant-numeric: tabular-nums; }
 .strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
-.strip button { flex: none; width: 40px; height: 40px; border-radius: 10px; border: 2px solid transparent; padding: 0; }
-.strip button[aria-pressed=true] { border-color: var(--ink); box-shadow: 0 0 0 2px var(--snow) inset; }
-.strip .add { border: 1.5px dashed var(--ink-soft); background: var(--snow); font-size: 20px; }
+.strip button { flex: none; width: 40px; height: 40px; border-radius: 999px; border: 2px solid transparent; padding: 0; }
+.strip button[aria-pressed=true] { border-color: var(--needle); box-shadow: 0 0 0 3px var(--card) inset; }
+.strip .add { border: 1.5px dashed var(--needle); background: var(--card); color: var(--needle); font-size: 20px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* Steps */
 .tabs {
   grid-area: tabs; display: flex; gap: 2px; overflow-x: auto;
   padding: 4px 8px calc(6px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--line); background: var(--snow);
+  background: var(--snow);
   scrollbar-width: none;
 }
 .tabs button {
   flex: 1 0 auto; min-height: 48px; border: 0; background: none; padding: 0 6px;
   font-size: 13.5px; color: var(--ink-soft); border-radius: var(--radius-s); position: relative;
 }
-.tabs button[aria-selected=true] { color: var(--ink); font-weight: 600; }
-.tabs button[aria-selected=true]::after {
-  content: ""; position: absolute; left: 30%; right: 30%; bottom: 6px; height: 3px; border-radius: 3px; background: var(--needle);
-}
+.tabs button { border-radius: 999px; margin: 4px 0; min-height: 40px; }
+.tabs button[aria-selected=true] { color: var(--needle); background: var(--needle-soft); font-weight: 600; }
 .tabs button[hidden] { display: none; }
 
 /* Dialogs */
 dialog {
   border: 0; border-radius: var(--radius-m); padding: 0; width: min(560px, 94vw); max-height: 86dvh;
-  box-shadow: 0 20px 60px rgba(27, 40, 83, .3); color: var(--ink);
+  box-shadow: 0 20px 60px rgba(92, 24, 78, .28); color: var(--ink); background: var(--snow);
 }
-dialog::backdrop { background: rgba(27, 40, 83, .35); }
+dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px); }
 .dlg { display: grid; grid-template-rows: auto auto minmax(0, 1fr); max-height: 86dvh; }
 .dlg-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 6px; }
 .dlg-head h2 { flex: 1; margin: 0; font: 600 19px/1.2 var(--round); }
 .dlg-body { overflow-y: auto; padding: 8px 14px 16px; }
 .dmc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
 .dmc {
-  border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--snow); padding: 4px; text-align: left; font-size: 12px;
+  border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--card); padding: 4px; text-align: left; font-size: 12px;
 }
-.dmc span { display: block; height: 34px; border-radius: 5px; margin-bottom: 4px; box-shadow: inset 0 0 0 1px rgba(27, 40, 83, .15); }
+.dmc span { display: block; height: 34px; border-radius: 5px; margin-bottom: 4px; box-shadow: inset 0 0 0 1px rgba(52, 25, 58, .15); }
 .dmc small { display: block; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .saved { display: grid; grid-template-columns: 56px 1fr auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .saved img { width: 56px; height: 56px; object-fit: contain; background: var(--aida); border-radius: var(--radius-s); }
@@ -206,7 +210,7 @@ dialog::backdrop { background: rgba(27, 40, 83, .35); }
 .saved .d { font-size: 12.5px; color: var(--ink-soft); }
 .toast {
   position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%);
-  background: var(--ink); color: var(--snow); padding: 10px 16px; border-radius: 999px; font-size: 14px; z-index: 10;
+  background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; box-shadow: var(--shadow); font-size: 14px; z-index: 10;
   max-width: 92vw; text-align: center;
 }
 .toast[hidden] { display: none; }
@@ -221,7 +225,7 @@ dialog::backdrop { background: rgba(27, 40, 83, .35); }
   }
   .stage-wrap { margin: 0 6px 12px 12px; }
   .panel { max-height: none; border-left: 0; padding-top: 4px; }
-  .tabs { border-top: 1px solid var(--line); }
+  .tabs { padding-bottom: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -1071,7 +1075,7 @@ var ChartPdf = (function () {
     function line(x1, y1, x2, y2) { ops.push(f(x1) + ' ' + f(y1) + ' m ' + f(x2) + ' ' + f(y2) + ' l S'); }
 
     // Header
-    fill('#1B2853');
+    fill('#34193A');
     text('F2', 18, M, PAGE_H - M - 14, title);
     var h = chart.header;
     var sub = h.blank + ', ' + h.finish + ', ' + h.count + ', ' + h.size + (h.design ? ', ' + h.design : '');
@@ -1093,16 +1097,16 @@ var ChartPdf = (function () {
       if (!bw) { fill(c.hex); rect(X(c.x), Y(c.y + 1), cs, cs, 'f'); }
     });
     // Ring Holes
-    chart.holes.forEach(function (c) { fill('#1B2853'); rect(X(c.x), Y(c.y + 1), cs, cs, 'f'); });
+    chart.holes.forEach(function (c) { fill('#34193A'); rect(X(c.x), Y(c.y + 1), cs, cs, 'f'); });
     // Grid
-    ops.push('0.3 w'); stroke('#B9C0D0');
+    ops.push('0.3 w'); stroke('#CDBFD3');
     for (var i = 0; i <= chart.width; i++) line(X(i), Y(0), X(i), Y(chart.height));
     for (i = 0; i <= chart.height; i++) line(X(0), Y(i), X(chart.width), Y(i));
-    ops.push('0.9 w'); stroke('#1B2853');
+    ops.push('0.9 w'); stroke('#34193A');
     chart.boldLinesX.forEach(function (b) { line(X(b), Y(0), X(b), Y(chart.height)); });
     chart.boldLinesY.forEach(function (b) { line(X(0), Y(b), X(chart.width), Y(b)); });
     // Numbers on the bold lines
-    fill('#5A6385');
+    fill('#7A6380');
     chart.boldLinesX.forEach(function (b) { if (b > 0) text('F1', 6, X(b) - 3, Y(0) + 3, String(b)); });
     chart.boldLinesY.forEach(function (b) { if (b > 0) text('F1', 6, X(0) - 12, Y(b) - 2, String(b)); });
     // Symbols
@@ -1124,8 +1128,8 @@ var ChartPdf = (function () {
       var multi = chart.edgeLegend.length > 1;
       chart.edges.forEach(function (e) {
         var s = seg(e);
-        ops.push('3 w'); stroke('#1B2853'); line(s[0], s[1], s[2], s[3]);
-        ops.push('1.8 w'); stroke(bw ? (multi ? '#FFFFFF' : '#1B2853') : e.hex); line(s[0], s[1], s[2], s[3]);
+        ops.push('3 w'); stroke('#34193A'); line(s[0], s[1], s[2], s[3]);
+        ops.push('1.8 w'); stroke(bw ? (multi ? '#FFFFFF' : '#34193A') : e.hex); line(s[0], s[1], s[2], s[3]);
       });
       if (bw && multi) { // label edge Floss with its Symbol just outside the cut
         fill('#000000');
@@ -1136,13 +1140,13 @@ var ChartPdf = (function () {
         });
       }
     } else {
-      ops.push('1.6 w'); stroke('#E31D42');
+      ops.push('1.6 w'); stroke('#7A3E9D');
       chart.outline.forEach(function (o) { var s = seg(o); line(s[0], s[1], s[2], s[3]); });
     }
 
     // Legend
     var ly = M + legendH - 6, colW = (PAGE_W - 2 * M) / 2;
-    fill('#1B2853'); text('F2', 10, M, ly, 'Thread (DMC)'); ly -= 18;
+    fill('#34193A'); text('F2', 10, M, ly, 'Thread (DMC)'); ly -= 18;
     var entries = chart.legend.map(function (r) { return { r: r, edge: false }; });
     if (chart.edgeLegend.length) {
       entries.push({ heading: 'Edge stitches (overcast)' });
@@ -1151,17 +1155,17 @@ var ChartPdf = (function () {
     entries.forEach(function (e, k) {
       var col = k < perCol ? 0 : 1, rowi = k < perCol ? k : k - perCol;
       var x = M + col * colW, y = ly - rowi * rowH;
-      if (e.heading) { fill('#1B2853'); text('F2', 9, x, y + 2, e.heading); return; }
+      if (e.heading) { fill('#34193A'); text('F2', 9, x, y + 2, e.heading); return; }
       var r = e.r;
       if (!bw) { fill(r.hex); rect(x, y - 2, 18, 11, 'f'); }
-      ops.push('0.5 w'); stroke('#1B2853'); rect(x, y - 2, 18, 11, 'S');
+      ops.push('0.5 w'); stroke('#34193A'); rect(x, y - 2, 18, 11, 'S');
       fill(bw ? '#000000' : (luminance(r.hex) < 0.45 ? '#FFFFFF' : '#000000'));
       text('F2', 8, x + 6, y + 0.5, e.edge ? (bw && chart.edgeLegend.length > 1 ? r.symbol : '') : r.symbol);
-      fill('#1B2853');
+      fill('#34193A');
       text('F2', 9, x + 24, y, r.code);
       text('F1', 9, x + 58, y, r.name + '  (' + r.count + (e.edge ? ' edge stitches)' : ' stitches)'));
     });
-    fill('#5A6385');
+    fill('#7A6380');
     text('F1', 6.5, M, M - 14, 'Color data: craft-color-codes by MakeBead (makebead.com), CC BY 4.0. Made with Stitch Keychains.');
 
     // Assemble PDF
@@ -1246,7 +1250,7 @@ var ChartPdf = (function () {
     for (var i = 0; i < app.mask.length; i++) {
       if (app.mask[i]) {
         out.data[i * 4 + 3] = 0;
-        ov.data[i * 4] = 227; ov.data[i * 4 + 1] = 29; ov.data[i * 4 + 2] = 66; ov.data[i * 4 + 3] = 120;
+        ov.data[i * 4] = 122; ov.data[i * 4 + 1] = 62; ov.data[i * 4 + 2] = 157; ov.data[i * 4 + 3] = 130;
       }
     }
     app.masked = app.masked || document.createElement('canvas');
@@ -1396,7 +1400,7 @@ var ChartPdf = (function () {
     if (clip) sctx.clip(clip); else { sctx.beginPath(); sctx.rect(G.toX(0), G.toY(0), g.cols * G.cs, g.rows * G.cs); sctx.clip(); }
     drawPhoto();
     sctx.restore();
-    sctx.lineWidth = 2; sctx.strokeStyle = '#E31D42'; sctx.lineCap = 'square';
+    sctx.lineWidth = 2; sctx.strokeStyle = '#7A3E9D'; sctx.lineCap = 'square';
     if (clip) sctx.stroke(outlinePath(G)); else sctx.strokeRect(G.toX(0), G.toY(0), g.cols * G.cs, g.rows * G.cs);
     setHint(app.tab === 'photo' ? 'Drag to move, pinch to zoom and turn' : 'Showing the photo');
   }
@@ -1445,13 +1449,13 @@ var ChartPdf = (function () {
     sctx.globalAlpha = 1;
     // Grid, bold every 10 counted from where the Chart starts.
     if (cs >= 5) {
-      sctx.lineWidth = 1; sctx.strokeStyle = 'rgba(27,40,83,0.09)';
+      sctx.lineWidth = 1; sctx.strokeStyle = 'rgba(52,25,58,0.09)';
       sctx.beginPath();
       for (x = R.x0; x <= R.x0 + R.w; x++) { sctx.moveTo(G.toX(x), G.toY(R.y0)); sctx.lineTo(G.toX(x), G.toY(R.y0 + R.h)); }
       for (y = R.y0; y <= R.y0 + R.h; y++) { sctx.moveTo(G.toX(R.x0), G.toY(y)); sctx.lineTo(G.toX(R.x0 + R.w), G.toY(y)); }
       sctx.stroke();
     }
-    sctx.strokeStyle = 'rgba(27,40,83,0.35)'; sctx.lineWidth = 1.2; sctx.beginPath();
+    sctx.strokeStyle = 'rgba(52,25,58,0.35)'; sctx.lineWidth = 1.2; sctx.beginPath();
     for (x = R.gx; x <= R.x0 + R.w; x += 10) { sctx.moveTo(G.toX(x), G.toY(R.y0)); sctx.lineTo(G.toX(x), G.toY(R.y0 + R.h)); }
     for (y = R.gy; y <= R.y0 + R.h; y += 10) { sctx.moveTo(G.toX(R.x0), G.toY(y)); sctx.lineTo(G.toX(R.x0 + R.w), G.toY(y)); }
     sctx.stroke();
@@ -1459,19 +1463,19 @@ var ChartPdf = (function () {
     if (L) {
       for (var hi = 0; hi < L.hole.length; hi++) if (L.hole[hi]) {
         var hx = hi % L.cols - L.offset, hy = Math.floor(hi / L.cols) - L.offset;
-        sctx.fillStyle = '#1B2853'; sctx.fillRect(G.toX(hx), G.toY(hy), cs + 0.5, cs + 0.5);
+        sctx.fillStyle = '#34193A'; sctx.fillRect(G.toX(hx), G.toY(hy), cs + 0.5, cs + 0.5);
       }
       var w = Math.max(2.5, cs * 0.3);
       L.edges.forEach(function (e) {
         var ex = e.x - L.offset, ey = e.y - L.offset, s2 = edgeSeg(G, ex, ey, e.side);
         sctx.lineCap = 'butt';
-        sctx.lineWidth = w + 2; sctx.strokeStyle = '#1B2853';
+        sctx.lineWidth = w + 2; sctx.strokeStyle = '#34193A';
         sctx.beginPath(); sctx.moveTo(s2[0], s2[1]); sctx.lineTo(s2[2], s2[3]); sctx.stroke();
         sctx.lineWidth = w; sctx.strokeStyle = dmc(e.floss).hex;
         sctx.beginPath(); sctx.moveTo(s2[0], s2[1]); sctx.lineTo(s2[2], s2[3]); sctx.stroke();
       });
     } else {
-      sctx.lineWidth = 2; sctx.strokeStyle = '#E31D42'; sctx.lineCap = 'square'; sctx.stroke(outlinePath(G));
+      sctx.lineWidth = 2; sctx.strokeStyle = '#7A3E9D'; sctx.lineCap = 'square'; sctx.stroke(outlinePath(G));
     }
     var hints = { edit: { pencil: 'Tap or drag to stitch', eraser: 'Tap or drag to unstitch', eyedropper: 'Tap a Stitch to pick its color', move: 'Drag to move, pinch to zoom' },
       edge: { ring: 'Tap where the Ring Hole goes', edgepaint: 'Tap edge stitches to paint them' } };
@@ -1638,7 +1642,7 @@ var ChartPdf = (function () {
         for (var x = Math.max(0, Math.floor(cx - r)); x <= Math.min(W - 1, Math.ceil(cx + r)); x++)
           if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) app.mask[y * W + x] = v;
       // quick preview without rebuilding the whole overlay
-      ctx.fillStyle = v ? 'rgba(227,29,66,0.47)' : 'rgba(0,0,0,1)';
+      ctx.fillStyle = v ? 'rgba(122,62,157,0.51)' : 'rgba(0,0,0,1)';
       ctx.globalCompositeOperation = v ? 'source-over' : 'destination-out';
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = 'source-over';
@@ -1714,7 +1718,7 @@ var ChartPdf = (function () {
     var pal = p ? E.palette(p) : [], chart = p ? E.chartLayout(p) : null;
     var symOf = {}; if (chart) chart.legend.forEach(function (r) { symOf[r.code] = r.symbol; });
     $('#flossList').innerHTML = pal.map(function (f) {
-      return '<button class="floss" data-floss="' + f.code + '" aria-pressed="' + (app.selected === f.code) + '"><span class="swatch" style="background:' + f.hex + ';color:' + (lum(f.hex) < 0.45 ? '#fff' : '#1B2853') + '">' + (symOf[f.code] || '') + '</span>' +
+      return '<button class="floss" data-floss="' + f.code + '" aria-pressed="' + (app.selected === f.code) + '"><span class="swatch" style="background:' + f.hex + ';color:' + (lum(f.hex) < 0.45 ? '#fff' : '#34193A') + '">' + (symOf[f.code] || '') + '</span>' +
         '<span><span class="code">DMC ' + f.code + '</span><br><span class="nm">' + f.name + '</span></span><span class="ct">' + f.count + '</span></button>';
     }).join('') || '<p class="muted">Choose a photo to see its colors.</p>';
     $('#flossActions').hidden = !app.selected;
