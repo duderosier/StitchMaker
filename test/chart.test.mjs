@@ -50,3 +50,17 @@ test('the Chart header states the Blank, Fabric Count and finished size', () => 
   assert.equal(C.header.count, '14ct');
   assert.equal(C.header.size, '2" × 2" (28 × 28 stitches)');
 });
+
+test('a Cut-Out with no Stitches still produces a Chart instead of failing', () => {
+  const empty = E.createPattern({ image: image(20, 20, () => [0, 0, 0, 0]), blank: { shape: 'cutout', longIn: 2, count: 10, finish: 'overcast' }, colorCount: 4 });
+  const C = E.chartLayout(empty);
+  assert.equal(C.cells.length, 0);
+  assert.deepEqual(C.legend, []);
+});
+
+test('the first 24 Symbols contain no easily confused pairs', () => {
+  const confusable = [['Z', '2'], ['S', '5'], ['O', 'D'], ['O', '0'], ['B', '8'], ['G', '6'], ['I', '1'], ['Q', 'O'], ['U', 'V']];
+  const first = E.SYMBOLS.slice(0, 24);
+  assert.equal(new Set(first).size, 24);
+  for (const [a, b] of confusable) assert.ok(!(first.includes(a) && first.includes(b)), `${a} and ${b}`);
+});

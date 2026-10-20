@@ -272,6 +272,7 @@ dialog::backdrop { background: rgba(27, 40, 83, .35); }
         </div>
       </div>
       <p class="muted" id="finishNote"></p>
+      <p id="gridSize"></p>
       <div class="row"><label for="count">Fabric Count</label><select id="count"></select></div>
     </div>
 
@@ -724,6 +725,7 @@ var PatternEngine = (function () {
     switch (cmd.type) {
       case 'merge': case 'swap': {
         var from = flossIndex(cmd.from), to = flossIndex(cmd.type === 'merge' ? cmd.into : cmd.to);
+        if (from === to) return p;
         for (i = 0; i < cells.length; i++) if (cells[i] === from) cells[i] = to;
         var at = pal.indexOf(from);
         if (pal.indexOf(to) >= 0) pal.splice(at, 1); else pal[at] = to;
@@ -958,7 +960,8 @@ var PatternEngine = (function () {
 
   // ---------- Chart ----------
   // High-contrast glyphs available in every PDF viewer's Helvetica; order = Palette order.
-  var SYMBOLS = 'X O + S # = @ Z H N V T A K W U Y M P D 2 3 4 5 6 7 8 9 E F G J L R B C Q % & ?'.split(' ');
+  // Look-alike pairs (Z/2, S/5, O/D, B/8, G/6, I/1, U/V) are deliberately avoided.
+  var SYMBOLS = 'X O + # = @ % & ? * / < > ^ ~ $ A H K M N T W Y E F P R L J 3 4 7 9'.split(' ');
   function num(n) { return String(Math.round(n * 100) / 100); }
   function blankLabel(blank) {
     if (blank.shape === 'preset') return presetById(blank.presetId).label;
@@ -970,6 +973,7 @@ var PatternEngine = (function () {
     var L = overcastLayout(p), cells = effectiveCells(p), pal = p.palette, symbolOf = {};
     pal.forEach(function (f, i) { symbolOf[f] = SYMBOLS[i % SYMBOLS.length]; });
     var x0, y0, w, h;
+    if (L && !L.bounds) L = null; // nothing to cut yet: chart the empty grid
     if (L) { x0 = L.bounds.x0 - L.offset; y0 = L.bounds.y0 - L.offset; w = L.bounds.x1 - L.bounds.x0 + 1; h = L.bounds.y1 - L.bounds.y0 + 1; }
     else { x0 = 0; y0 = 0; w = p.cols; h = p.rows; }
     var out = { width: w, height: h, cells: [], outline: [], edges: [], holes: [], boldLinesX: lines(w), boldLinesY: lines(h) };
@@ -1549,7 +1553,8 @@ var ChartPdf = (function () {
       gesture = { kind: 'pan', x: x, y: y, frame: Object.assign({}, app.frame) };
     } else if (app.tab === 'background') {
       var B = bgGeometry(), px = (x - B.ox) / B.sc, py = (y - B.oy) / B.sc;
-      if (px < 0 || py < 0 || px >= app.photo.width || py >= app.photo.height) return;
+      var onPhoto = px >= 0 && py >= 0 && px < app.photo.width && py < app.photo.height;
+      if (app.bgTool === 'wand' && !onPhoto) return; // brushes may start just off the photo
       if (!guardEdits()) return;
       pushMask();
       if (app.bgTool === 'wand') {
@@ -1690,6 +1695,10 @@ var ChartPdf = (function () {
     pressed($('#finish'), 'data-finish', b.finish);
     $('#finish [data-finish=framed]').disabled = b.shape === 'cutout';
     $('#finishNote').textContent = b.finish === 'framed' ? 'Aida pressed into a keychain frame; the frame has its own ring.' : 'Plastic canvas cut out, edged with overcast stitches, with its own Ring Hole.';
+    var gb = E.blankGrid(b);
+    $('#gridSize').textContent = b.shape === 'cutout'
+      ? 'Up to ' + gb.cols + ' × ' + gb.rows + ' stitches; the cut follows your design.'
+      : gb.cols + ' × ' + gb.rows + ' stitches at ' + b.count + ' count.';
     var cs = E.allowedCounts(b);
     $('#count').innerHTML = cs.map(function (c) { return '<option value="' + c + '"' + (c === b.count ? ' selected' : '') + '>' + c + ' count' + '</option>'; }).join('');
     // Photo
@@ -1896,9 +1905,17 @@ var ChartPdf = (function () {
     } else if (t.dataset.delete) {
       if (!confirm('Delete this pattern from this phone?')) return;
       var id = t.dataset.delete;
-      tx('readwrite', function (s) { s.delete(id); }).then(function () { if (id === app.id) app.id = null; listSaved(); });
+      if (id === app.id) { clearTimeout(saveTimer); startNew(); }
+      tx('readwrite', function (s) { s.delete(id); }).then(listSaved);
     }
   });
+
+  function startNew() {
+    clearTimeout(saveTimer);
+    app.id = null; app.photo = null; app.pattern = null; app.frame = null; app.name = 'Untitled keychain'; $('#name').value = app.name;
+    try { localStorage.removeItem('stitch-keychains:current'); } catch (e) { /* ignore */ }
+    setTab('photo');
+  }
 
   // ---------- toast ----------
   var toastTimer = null;
@@ -1952,11 +1969,7 @@ var ChartPdf = (function () {
       case 'reset-view': app.view = { zoom: 1, panX: 0, panY: 0 }; render(); break;
       case 'export': exportPdf(); break;
       case 'close-dialog': t.closest('dialog').close(); break;
-      case 'new-pattern':
-        $('#patterns').close();
-        app.id = null; app.photo = null; app.pattern = null; app.frame = null; app.name = 'Untitled keychain'; $('#name').value = app.name;
-        try { localStorage.removeItem('stitch-keychains:current'); } catch (e) { /* ignore */ }
-        setTab('photo'); break;
+      case 'new-pattern': $('#patterns').close(); startNew(); break;
     }
   });
   $('#btnPatterns').addEventListener('click', function () { saveNow(); listSaved(); $('#patterns').showModal(); });
@@ -1989,7 +2002,6 @@ var ChartPdf = (function () {
   if (current) openSaved(current);
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function () {});
-  window.__stitch = app; // handy when testing on a device
 })();
 </script>
 </body>

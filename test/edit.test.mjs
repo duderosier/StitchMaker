@@ -77,3 +77,9 @@ test('a Pattern survives saving and loading exactly, including undo history', ()
   assert.equal(E.cellAt(back, 0, 0).code, '3371');
   assert.equal(E.cellAt(E.undo(back), 0, 0).code, '310');
 });
+
+test('swapping a Floss for itself changes nothing', () => {
+  const before = bands();
+  const after = E.apply(before, { type: 'swap', from: '310', to: '310' });
+  assert.deepEqual(E.palette(after), E.palette(before));
+});

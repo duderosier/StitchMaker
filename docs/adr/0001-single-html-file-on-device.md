@@ -11,3 +11,4 @@ The whole app is a single `index.html` (markup, styles, script and the DMC Floss
 ## Consequences
 
 - The app itself is entirely `index.html`. Installing it as an offline home-screen app needs a few small companions the browser insists on loading by URL: `sw.js` (a service worker cannot be inline), `manifest.webmanifest` (Android install) and the `icon-*.png` files. They hold no app logic; deleting them only loses offline install.
+- The Chart PDF is written by a small hand-made PDF writer (vector cells, Helvetica text) instead of an embedded PDF library, which keeps the file ~120 KB and fully offline. Symbols are therefore plain Helvetica glyphs, chosen to avoid look-alike pairs.
