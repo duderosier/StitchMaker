@@ -7,27 +7,39 @@ Turning a photo into a cross-stitch Pattern that fits a keychain Blank and can b
 ### The physical piece
 
 **Blank**:
-The physical keychain the stitched piece goes into, defined by its shape, its Fabric Count and the stitch grid that fits inside it.
+The physical keychain piece a Pattern is made for, defined by its shape, its Finish, its Fabric Count and the stitch grid that fits inside it.
 _Avoid_: Frame, template, keychain (when meaning the size/shape)
 
-**Framed Blank**:
-A Blank with a fixed, ready-made shape (round, heart, rectangle…) that already has its own keyring.
-_Avoid_: Preset (a preset is just a saved Framed Blank size), insert
+**Preset Shape**:
+A ready-made Blank outline (round, heart, square, rectangle, oval, hexagon) at a given size; a custom width × height is also a Preset Shape.
+_Avoid_: Template, preset (on its own)
 
 **Cut-Out**:
-A Blank whose shape comes from the stitched design itself: plastic canvas cut around the Pattern along the Cut Line and finished with Edge Stitches.
+A Blank whose shape comes from the stitched design itself rather than a Preset Shape; always Overcast.
 _Avoid_: Custom shape, silhouette, die-cut
 
+**Finish**:
+How the stitched piece becomes a keychain: Framed or Overcast.
+_Avoid_: Mounting, style
+
+**Framed**:
+A Finish where the stitched fabric is pressed into a ready-made keychain frame that hides its edge and carries its own ring; only for Preset Shapes.
+_Avoid_: Insert, mounted
+
+**Overcast**:
+A Finish where plastic canvas is cut along the Cut Line and its edge is wrapped in Edge Stitches, with its own Ring Hole.
+_Avoid_: Whipstitched, bound, plastic canvas (when meaning the Finish)
+
 **Cut Line**:
-The outline a Cut-Out is cut along: the stitched area with any inner gaps filled, grown by the Margin.
+The outline an Overcast Blank is cut along: the Preset Shape's outline, or for a Cut-Out the stitched area with inner gaps filled, grown by the Margin.
 _Avoid_: Border, outline (when meaning the cut)
 
 **Margin**:
-The number of bare canvas cells left between the outermost Stitches and the Cut Line.
+The number of bare canvas cells left between a Cut-Out's outermost Stitches and its Cut Line.
 _Avoid_: Padding, bleed
 
 **Ring Hole**:
-The hole a jump ring passes through, placed either on a Ring Tab outside the design or inside the design itself; its size comes from a preset or is set by hand.
+The hole a jump ring passes through on an Overcast Blank, placed either on a Ring Tab outside the design or inside the design itself; its size comes from a preset or is set by hand.
 _Avoid_: Keyring, loop, eyelet
 
 **Ring Tab**:
@@ -53,7 +65,7 @@ One full cross stitch occupying one cell of the Pattern.
 _Avoid_: Pixel, cell (when meaning a stitched cell)
 
 **Edge Stitch**:
-One overcast stitch wrapping a Cut-Out's cut edge (outer Cut Line or an inside Ring Hole); each has its own Floss.
+One stitch wrapping the cut edge of an Overcast Blank (its Cut Line or an inside Ring Hole); each has its own Floss, which does not count toward the Color Count.
 _Avoid_: Whipstitch, border stitch, binding
 
 **Background**:
@@ -69,7 +81,7 @@ The set of Flosses used in a Pattern.
 _Avoid_: Colors, swatches
 
 **Color Count**:
-The number of Flosses the automatic reduction aims for when building the Palette.
+The number of Flosses the automatic reduction aims for when building the Palette of design Stitches.
 _Avoid_: Colors, levels, depth
 
 ### Editing the Palette
