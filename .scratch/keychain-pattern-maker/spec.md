@@ -108,7 +108,7 @@ A single-page app, delivered as one self-contained HTML file served from GitHub 
 ### App and layout
 76. As an iPhone user, I want to add the app to my home screen and have it open full-screen, so that it feels like an app.
 77. As a phone user, I want a single-column layout with tools along the bottom, so that it's usable one-handed.
-78. As a Fold user, I want photo and Pattern side by side on the unfolded screen, so that I use the space.
+78. As a Fold user, I want the Pattern on the left and the controls on the right on the unfolded screen, so that I use the space.
 79. As a user, I want the app to work offline once loaded, so that I can use it anywhere.
 80. As a user, I want my photos never to leave my phone, so that my pictures stay private.
 81. As a user, I want controls large enough to tap and clearly labelled, so that it's easy to use on a small screen.
@@ -127,7 +127,7 @@ A single-page app, delivered as one self-contained HTML file served from GitHub 
 - **Color matching** uses a perceptual color space (CIELAB distance) for both reduction and snapping to DMC. Reduction clusters the non-Background stitch-grid pixels to the Color Count, snaps each cluster to its nearest DMC Floss, and combines clusters that land on the same Floss. No dithering. Confetti cleanup reassigns small isolated groups to the most common neighbouring Floss.
 - **DMC Floss table**: full standard DMC list (number, name, RGB) embedded as data. Values come from a published public reference; record the source in a comment.
 - **Symbols**: a fixed ordered set of high-contrast glyphs assigned by Palette order, distinct enough for at least 24 Flosses plus edge marks.
-- **UI shell** (thin): Blank picker, photo framing (pan/pinch/rotate), Background tools, Color Count and Palette panel, grid editor with pencil/eraser/eyedropper and undo, Overcast panel, export. Responsive: single column below a width breakpoint, side by side above it.
+- **UI shell** (thin): Blank picker, photo framing (pan/pinch/rotate), Background tools, Color Count and Palette panel, grid editor with pencil/eraser/eyedropper and undo, Overcast panel, export. Responsive: single column below a width breakpoint; above it, the Pattern on the left and the controls on the right.
 - **Chart rendering**: draws the engine's Chart layout into a one-page Letter PDF with an embedded PDF library; on iOS delivers via the Web Share API with a file, falling back to a download link.
 - **Persistence**: IndexedDB stores saved Patterns (engine JSON plus a downscaled copy of the source photo and framing). Current work auto-saves after edits (debounced). "My patterns" lists, renames and deletes. All storage access is wrapped so failures are reported, not fatal.
 - **Image loading**: decode with EXIF orientation respected; downscale large photos before processing.

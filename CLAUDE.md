@@ -2,6 +2,10 @@
 
 Mobile web app (Android + iOS browsers) for turning an uploaded photo into a cross-stitch pattern sized for a keychain, with a control for how many colors to reduce the image to (similar to Cricut Design Space's color simplification).
 
+## Wording
+
+Code, tests, specs and tickets use the exact terms in `GLOSSARY.md`. Labels people see in the app may use friendlier everyday words (for example "Colors" for the Palette, "Pick color", "Edge color", "On a tab" for a Ring Tab, "Thread" on the Chart); don't rename those to glossary terms.
+
 ## Agent skills
 
 ### Issue tracker
