@@ -255,6 +255,18 @@ try {
   await page.fill('#impKey', '727, 827'); await page.waitForTimeout(500);
   const retyped = await page.$$eval('#impThreads .thread input', els => els.map(e => e.value).join(' '));
   check(retyped.startsWith('727 827'), `typed key numbers change the guesses (${retyped.trim()})`);
+  await page.click('#importer [data-act=close-dialog]');
+  await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-symbols.pdf'));
+  await page.waitForSelector('.imp-step[data-step=grid].on', { timeout: 20000 });
+  await page.waitForTimeout(300);
+  await page.click('[data-act=imp-read]');
+  await page.waitForSelector('.imp-step[data-step=threads].on', { timeout: 20000 });
+  await page.waitForFunction(() => /by their symbols/.test(document.querySelector('#impKeyNote').textContent), null, { timeout: 10000 }).catch(() => {});
+  const bySymbol = (await page.$$eval('#impThreads .thread input', els => els.map(e => e.value))).filter(Boolean).sort().join(' ');
+  check(bySymbol === '310 3752 745', `a PDF printing its symbols as text matches each symbol to the key (${bySymbol})`);
+  await page.fill('#impKey', '727, 827'); await page.waitForTimeout(500);
+  const kept = (await page.$$eval('#impThreads .thread input', els => els.map(e => e.value))).filter(Boolean).sort().join(' ');
+  check(kept === '310 3752 745', `typed key numbers leave symbol matches alone (${kept})`);
   await page.evaluate(() => { document.querySelector('#impCols').value = ''; });
   await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart.heic'));
   await page.waitForFunction(() => !document.querySelector('#importer').open || (document.querySelector('#impBusy').hidden && document.querySelector('#impCols').value), null, { timeout: 30000 }).catch(() => {});
