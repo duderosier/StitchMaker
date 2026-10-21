@@ -633,7 +633,10 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
       <div class="dlg-body">
         <div class="keyrow"><label for="impKey">Numbers from the key</label>
           <input type="text" id="impKey" autocomplete="off" placeholder="e.g. 310, 321, 3865, Blanc">
-          <p class="muted" id="impKeyNote">List the key's DMC numbers and each color gets the closest one.</p></div>
+          <p class="muted" id="impKeyNote">List the key's DMC numbers and each color gets the closest one.</p>
+          <div class="actions"><button class="secondary" data-act="key-ocr-page">Read the key on this page</button>
+            <button class="secondary" data-act="key-ocr-photo">Key in another photo</button></div>
+          <input type="file" id="keyFile" accept="image/*,.heic,.heif" hidden></div>
         <div class="threads" id="impThreads"></div>
       </div>
       <div class="imp-foot actions">
@@ -3923,6 +3926,53 @@ var ChartPdf = (function () {
       } catch (err) { impBusy(''); toast('Could not read the chart: ' + (err && err.message || 'unknown error')); }
     }, 40);
   }
+  // ---------- reading a key from a picture ----------
+  // Text recognition (Tesseract) runs on the phone and is downloaded only the first time it is used, then kept for
+  // offline use like pdf.js (ADR 0002). It reads the key's lines; the DMC numbers in them fill "Numbers from the key".
+  var TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/';
+  var TESS_CORE = 'https://cdn.jsdelivr.net/npm/tesseract.js-core@6.0.0/';
+  var TESS_LANG = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int';
+  var ocrWorker = null;
+  function ocrText(canvas) {
+    return loadScriptOnce(TESS + 'tesseract.min.js', 'Tesseract', 'The text reader').then(function (T) {
+      if (!ocrWorker) ocrWorker = T.createWorker('eng', 1, { workerPath: TESS + 'worker.min.js', corePath: TESS_CORE, langPath: TESS_LANG })
+        .catch(function (err) { ocrWorker = null; throw err; });
+      return ocrWorker;
+    }).then(function (w) { return w.recognize(canvas); }).then(function (r) { return r.data.text || ''; });
+  }
+  // The chart page with its grid painted out, so symbols in the grid aren't read as numbers.
+  function pageWithoutGrid() {
+    var c = document.createElement('canvas'); c.width = imp.page.width; c.height = imp.page.height;
+    var cx = c.getContext('2d'); cx.drawImage(imp.page, 0, 0);
+    cx.fillStyle = '#fff'; cx.beginPath();
+    imp.corners.forEach(function (p, k) { if (k) cx.lineTo(p[0], p[1]); else cx.moveTo(p[0], p[1]); });
+    cx.closePath(); cx.fill();
+    return c;
+  }
+  function readKeyFrom(canvas) {
+    var reading = imp;
+    impBusy('Reading the key… The first time downloads the text reader (about 7 MB).');
+    ocrText(canvas).then(function (text) {
+      impBusy('');
+      if (imp !== reading) return;
+      var codes = E.keyCodesFromText(text, { skipNumberLines: true });
+      if (!codes.length) { toast('No DMC numbers found there. Type them into Numbers from the key instead.'); return; }
+      var have = E.keyCodesFromText($('#impKey').value), all = have.concat(codes.filter(function (c) { return have.indexOf(c) < 0; }));
+      $('#impKey').value = imp.key = all.join(', '); applyKey(); showThreads();
+      toast('Read ' + plural(codes.length, 'DMC number') + ' from the key. Check them against it.');
+    }).catch(function (err) { impBusy(''); toast('Could not read the key: ' + (err && err.message || 'unknown error') + '.'); });
+  }
+  $('#keyFile').addEventListener('change', function () {
+    var file = this.files[0]; this.value = '';
+    if (!file || !imp) return;
+    impBusy('Opening the picture…');
+    openPicture(file, function () { impBusy('Converting the HEIC photo…'); }).then(function (img) {
+      var sc = Math.min(1, MAX_SOURCE / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.naturalWidth * sc)); c.height = Math.max(1, Math.round(img.naturalHeight * sc));
+      var cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height); cx.drawImage(img, 0, 0, c.width, c.height);
+      readKeyFrom(c);
+    }).catch(function (err) { impBusy(''); toast(pictureError(err, 'a JPEG, PNG or HEIC')); });
+  });
   // Guesses from the key's numbers for every color the person hasn't set by hand.
   function applyKey() {
     var codes = E.keyCodesFromText(imp.key);
@@ -4197,6 +4247,8 @@ var ChartPdf = (function () {
       case 'add-chart-page': addChartPage(); break;
       case 'imp-to-threads': impStep('threads'); break;
       case 'imp-join': if (imp && imp.part) joinPage(); break;
+      case 'key-ocr-page': if (imp && imp.read) readKeyFrom(pageWithoutGrid()); break;
+      case 'key-ocr-photo': $('#keyFile').click(); break;
       case 'imp-auto': if (imp) { imp.typed = false; guessCounts(); } break;
       case 'imp-read': if (imp && imp.page) readImport(); break;
       case 'imp-back': impStep('grid'); break;

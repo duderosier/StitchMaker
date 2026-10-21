@@ -23,6 +23,6 @@ jobs:
           fi
       - name: Browser smoke test
         run: |
-          npm i --no-save playwright@1.56.0 pdfjs-dist@3.11.174 heic2any@0.0.4
+          npm i --no-save playwright@1.56.0 pdfjs-dist@3.11.174 heic2any@0.0.4 tesseract.js@6.0.1 tesseract.js-core@6.0.0 @tesseract.js-data/eng@1.0.0
           npx playwright install --with-deps chromium
           npm run smoke

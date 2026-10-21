@@ -16,3 +16,7 @@ Importing a Source Chart from a PDF needs the page drawn as an image, which brow
 ## Addendum (2026-10-20): HEIC photos
 
 The same pattern covers HEIC/HEIF photos (iPhone camera files) on browsers that cannot show them (Chrome, Android): `heic2any` 0.0.4 is fetched from jsDelivr only when a picture fails to open and looks like HEIC, then cached by the service worker. Safari opens HEIC natively and never downloads it.
+
+## Addendum (2026-10-21): reading keys from photos
+
+Text recognition for a chart key in a photo uses Tesseract.js 6.0.1 with tesseract.js-core 6.0.0 and the compact English data (`@tesseract.js-data/eng@1.0.0`, `4.0.0_best_int`), all from jsDelivr, fetched only when the person taps "Read the key on this page" or "Key in another photo" (about 7 MB) and kept by the service worker; Tesseract also keeps its language data in IndexedDB. Recognition runs on the phone, so the photo never leaves it, which is why a cloud OCR service was not used.

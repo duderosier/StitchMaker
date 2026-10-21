@@ -55,6 +55,13 @@ async function openPage(contextOptions) {
     const name = new URL(route.request().url()).pathname.split('/').pop();
     try { await route.fulfill({ body: await readFile(join(pdfjsDir, name)), contentType: 'text/javascript' }); } catch { await route.abort(); }
   });
+  // Likewise the key text reader (Tesseract script, core and English data) from jsDelivr.
+  await page.context().route(/^https:\/\/cdn\.jsdelivr\.net\/npm\/(tesseract\.js@[^/]+\/dist|tesseract\.js-core@[^/]+|@tesseract\.js-data\/eng@[^/]+)\//, async route => {
+    const u = new URL(route.request().url()).pathname, name = u.split('/').pop();
+    const dir = u.includes('tesseract.js-core') ? 'tesseract.js-core' : u.includes('tesseract.js-data') ? '@tesseract.js-data/eng/4.0.0_best_int' : 'tesseract.js/dist';
+    try { await route.fulfill({ body: await readFile(join(root, 'node_modules', dir, name)), contentType: /\.wasm$/.test(name) ? 'application/wasm' : name.endsWith('.gz') ? 'application/gzip' : 'text/javascript', headers: { 'access-control-allow-origin': '*' } }); }
+    catch { await route.abort(); }
+  });
   await page.route('https://cdn.jsdelivr.net/npm/heic2any@*/dist/*', async route => {
     const name = new URL(route.request().url()).pathname.split('/').pop();
     try { await route.fulfill({ body: await readFile(join(heicDir, name)), contentType: 'text/javascript' }); } catch { await route.abort(); }
@@ -263,6 +270,12 @@ try {
   await page.fill('#impKey', '727, 827'); await page.waitForTimeout(500);
   const retyped = await page.$$eval('#impThreads .thread input', els => els.map(e => e.value).join(' '));
   check(retyped.startsWith('727 827'), `typed key numbers change the guesses (${retyped.trim()})`);
+  await page.fill('#impKey', ''); await page.waitForTimeout(400);
+  await page.click('[data-act=key-ocr-photo]');
+  await page.setInputFiles('#keyFile', join(root, 'test/smoke/fixtures/key-photo.jpg'));
+  await page.waitForFunction(() => document.querySelector('#impKey').value, null, { timeout: 90000 }).catch(() => {});
+  const ocrKey = await page.inputValue('#impKey');
+  check(ocrKey === '745, 3752, Blanc', `the key is read from a photo with the on-demand text reader (${ocrKey})`);
   await page.click('#importer [data-act=close-dialog]');
   await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-symbols.pdf'));
   await page.waitForSelector('.imp-step[data-step=grid].on', { timeout: 20000 });
