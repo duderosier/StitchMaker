@@ -237,6 +237,8 @@ input[type=number] { width: 92px; }
 
 /* Palette */
 .floss-list { display: grid; gap: 8px; }
+.progress { height: 10px; border-radius: 99px; background: rgba(74, 29, 94, .12); overflow: hidden; margin: -4px 0 10px; }
+.progress span { display: block; height: 100%; width: 0; background: var(--accent, #6B3482); border-radius: 99px; }
 .floss {
   display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 12px;
   padding: 8px 14px 8px 8px; border: 0; border-radius: var(--r-m);
@@ -560,6 +562,18 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
       <div class="actions"><button class="secondary" data-act="edge-clear">Reset painted edge stitches</button></div>
     </div>
 
+    <div class="pane" data-pane="stitch">
+      <div class="seg" id="stitchTool">
+        <button data-stitchtool="mark" aria-pressed="true">Mark done</button>
+        <button data-stitchtool="move" aria-pressed="false">Move</button>
+      </div>
+      <p id="progressText"></p>
+      <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
+      <p class="muted">Tap a thread to show only its stitches; tap it again to see them all.</p>
+      <div class="floss-list" id="progressList"></div>
+      <div class="actions"><button class="secondary" data-act="clear-progress">Start over</button></div>
+    </div>
+
     <div class="pane" data-pane="chart">
       <div class="row"><span class="field-label">Print in</span>
         <div class="seg" id="bw"><button data-bw="0" aria-pressed="true">Color</button><button data-bw="1">Black and white</button></div>
@@ -580,6 +594,7 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
     <button role="tab" data-tab="edit">Edit</button>
     <button role="tab" data-tab="edge">Edge</button>
     <button role="tab" data-tab="chart">Chart</button>
+    <button role="tab" data-tab="stitch">Stitch</button>
   </nav>
 
   <nav class="dock" aria-label="Tools">
@@ -1376,12 +1391,14 @@ var PatternEngine = (function () {
   function serialize(p) {
     return {
       v: 1, blank: p.blank, cols: p.cols, rows: p.rows, colorCount: p.colorCount, confetti: p.confetti, extraStitches: !!p.extraStitches, fit: p.fit || 'crop',
+      done: p.done && p.done.some(Boolean) ? encodeMask(p.done) : null,
       now: toSaved(snapshot(p)), past: (p.past || []).map(toSaved), future: (p.future || []).map(toSaved)
     };
   }
   function deserialize(o) {
     if (!o || o.v !== 1) throw new Error('Unrecognised saved Pattern');
-    var base = { v: 1, blank: o.blank, cols: o.cols, rows: o.rows, colorCount: o.colorCount, confetti: o.confetti, extraStitches: !!o.extraStitches, fit: o.fit === 'shrink' ? 'shrink' : 'crop' };
+    var base = { v: 1, blank: o.blank, cols: o.cols, rows: o.rows, colorCount: o.colorCount, confetti: o.confetti, extraStitches: !!o.extraStitches, fit: o.fit === 'shrink' ? 'shrink' : 'crop',
+      done: o.done ? Array.prototype.slice.call(decodeMask(o.done, o.cols * o.rows)) : [] };
     return withState(base, fromSaved(o.now), o.past.map(fromSaved), o.future.map(fromSaved));
   }
 
@@ -2443,6 +2460,39 @@ var PatternEngine = (function () {
   }
 
   function flossOut(i) { var f = DMC[i]; return { code: f.code, name: f.name, hex: f.hex }; }
+  // ---------- stitching progress ----------
+  // Squares marked done while stitching (`done`, 0/1 per cell). Not an edit: it has no undo step, rides along through
+  // edits, saves with the Pattern and starts over on a new Blank. Only squares with stitches count.
+  function withDone(p, cells, on) {
+    var q = {}; Object.keys(p).forEach(function (k) { q[k] = p[k]; });
+    q.done = (p.done || []).slice();
+    if (q.done.length !== p.cols * p.rows) q.done = new Array(p.cols * p.rows).fill(0);
+    cells.forEach(function (xy) {
+      var x = xy[0], y = xy[1], c = y * p.cols + x;
+      if (x < 0 || y < 0 || x >= p.cols || y >= p.rows || (on && !stitchedAt(p, c))) return;
+      q.done[c] = on ? 1 : 0;
+    });
+    return q;
+  }
+  function clearDone(p) { var q = {}; Object.keys(p).forEach(function (k) { q[k] = p[k]; }); q.done = []; return q; }
+  function isDone(p, x, y) { var c = y * p.cols + x; return !!(p.done && p.done[c]) && stitchedAt(p, c); }
+  // How far along the stitching is: squares done of squares with stitches, overall and per Palette thread.
+  function progress(p) {
+    var done = 0, total = 0, by = {}, sp = p.splits || {}, h = p.halves || {}, q = p.quarters || {};
+    for (var c = 0; c < p.cols * p.rows; c++) {
+      if (!stitchedAt(p, c)) continue;
+      var d = !!(p.done && p.done[c]), fl = [];
+      total++; if (d) done++;
+      if (p.cells[c] >= 0) fl.push(p.cells[c]);
+      if (sp[c]) fl.push(sp[c].a, sp[c].b);
+      if (h[c]) fl.push(h[c].f);
+      if (q[c]) CORNERS.forEach(function (k) { if (q[c][k] != null) fl.push(q[c][k]); });
+      fl.filter(function (f, i, arr) { return f >= 0 && arr.indexOf(f) === i; }).forEach(function (f) {
+        by[f] = by[f] || { done: 0, total: 0 }; by[f].total++; if (d) by[f].done++;
+      });
+    }
+    return { done: done, total: total, threads: p.palette.filter(function (f) { return by[f]; }).map(function (f) { var o = flossOut(f); o.done = by[f].done; o.total = by[f].total; return o; }) };
+  }
   // ---------- .oxs (Open Cross Stitch) ----------
   // The XML interchange format from Ursa Software (WinStitch/MacStitch), also read and written by FlossCross, Cross
   // Stitch Saga, StitchHub and others. Coordinates are in stitches (corners 0..width, half positions as .5).
@@ -2672,7 +2722,7 @@ var PatternEngine = (function () {
     readChart: readChart, estimateGridCounts: estimateGridCounts, fitChartGrid: fitChartGrid, gridPoint: gridPoint, cornerGrid: cornerGrid, guessChartCorners: guessChartCorners,
     createImportedPattern: createImportedPattern, chartBlank: chartBlank, keyCodesFromText: keyCodesFromText, keyGuesses: keyGuesses, keyPairsFromText: keyPairsFromText, cellSymbols: cellSymbols, symbolKeyGuesses: symbolKeyGuesses, chartPartOffset: chartPartOffset, joinChartPart: joinChartPart,
     blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette,
-    splitAt: splitAt, splitList: splitList, threadUsage: threadUsage, oxsExport: oxsExport, oxsImport: oxsImport, halfList: halfList, quarterList: quarterList, knots: knots, knotLegend: knotLegend, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, withFit: withFit, splitTriangles: splitTriangles, splitSide: splitSide
+    splitAt: splitAt, splitList: splitList, threadUsage: threadUsage, withDone: withDone, clearDone: clearDone, isDone: isDone, progress: progress, oxsExport: oxsExport, oxsImport: oxsImport, halfList: halfList, quarterList: quarterList, knots: knots, knotLegend: knotLegend, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, withFit: withFit, splitTriangles: splitTriangles, splitSide: splitSide
   };
 })();
 </script>
@@ -2907,7 +2957,7 @@ var ChartPdf = (function () {
     blank: { shape: 'preset', presetId: 'round-2', count: 14, finish: 'framed' },
     photo: null, masked: null, mask: null, maskPast: [], maskFuture: [], maskOverlay: null,
     frame: null, colorCount: 6, confetti: 1, pattern: null,
-    tab: 'photo', tool: 'pencil', splitDiag: '/', lineFrom: null, edgeTool: 'ring', bgTool: 'wand', tolerance: 20, brush: 24,
+    tab: 'photo', tool: 'pencil', stitchTool: 'mark', splitDiag: '/', lineFrom: null, edgeTool: 'ring', bgTool: 'wand', tolerance: 20, brush: 24,
     floss: null, selected: null, showPhoto: false, bw: false,
     source: null, // an imported Source Chart: { page, straight (canvases), corners, cols, rows, flosses }
     fitFrom: null, // { from, to }: the design before the last Blank change and what it became (Shrink to fit / Crop)
@@ -3195,7 +3245,7 @@ var ChartPdf = (function () {
       sctx.fillStyle = '#FFFFFF'; sctx.fill(insidePath(G));
     }
     // Stitches: real little crosses when there's room, solid squares when zoomed out.
-    var sel = app.tab === 'colors' ? app.selected : null;
+    var sel = app.tab === 'colors' || app.tab === 'stitch' ? app.selected : null;
     var crosses = cs >= 7, inset = cs * 0.16;
     if (comparingChart() && app.source.straight) {
       sctx.imageSmoothingEnabled = true;
@@ -3248,6 +3298,18 @@ var ChartPdf = (function () {
         sctx.moveTo(G.toX(l.a[0] + dx * ins), G.toY(l.a[1] + dy * ins)); sctx.lineTo(G.toX(l.b[0] - dx * ins), G.toY(l.b[1] - dy * ins)); sctx.stroke();
       });
       sctx.globalAlpha = 1;
+    }
+    // Stitch step: squares marked done are veiled with a tick, so what is left stands out.
+    if (app.tab === 'stitch' && p.done && p.done.length) {
+      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) {
+        if (!E.isDone(p, x, y)) continue;
+        var dX = G.toX(x), dY = G.toY(y);
+        sctx.fillStyle = 'rgba(247,242,250,0.78)'; sctx.fillRect(dX, dY, cs + 0.5, cs + 0.5);
+        if (cs >= 8) {
+          sctx.strokeStyle = '#6B3482'; sctx.lineWidth = Math.max(1.2, cs * 0.1); sctx.beginPath();
+          sctx.moveTo(dX + cs * 0.28, dY + cs * 0.52); sctx.lineTo(dX + cs * 0.44, dY + cs * 0.68); sctx.lineTo(dX + cs * 0.74, dY + cs * 0.34); sctx.stroke();
+        }
+      }
     }
     // Grid, bold every 10 counted from where the Chart starts.
     if (cs >= 5) {
@@ -3309,8 +3371,9 @@ var ChartPdf = (function () {
       sctx.lineWidth = 2; sctx.strokeStyle = '#6B3482'; sctx.lineCap = 'square'; sctx.stroke(outlinePath(G));
     }
     var hints = { edit: { pencil: 'Tap or drag to stitch', eraser: 'Tap or drag to unstitch', eyedropper: 'Tap a Stitch to pick its color', move: 'Drag to move, pinch to zoom', split: 'Tap half a square to stitch it; tap again to clear', half: 'Tap a square for a half stitch along the diagonal', quarter: 'Tap a corner of a square for a quarter stitch', knot: 'Tap a corner or a square\'s middle for a French knot', line: app.lineFrom ? 'Tap another corner; tap this one to finish' : 'Tap a corner to start a line; tap a line to remove it' },
-      edge: { ring: 'Tap where the Ring Hole goes', edgepaint: 'Tap edge stitches to paint them' } };
-    setHint(app.tab === 'edit' ? hints.edit[app.tool] : app.tab === 'edge' && L ? hints.edge[app.edgeTool] : '');
+      edge: { ring: 'Tap where the Ring Hole goes', edgepaint: 'Tap edge stitches to paint them' },
+      stitch: { mark: 'Tap or drag over stitches you have finished', move: 'Drag to move, pinch to zoom' } };
+    setHint(app.tab === 'edit' ? hints.edit[app.tool] : app.tab === 'edge' && L ? hints.edge[app.edgeTool] : app.tab === 'stitch' ? hints.stitch[app.stitchTool] : '');
   }
   function edgeSeg(G, x, y, side) { var u = E.sideSegment(x, y, side); return [G.toX(u[0]), G.toY(u[1]), G.toX(u[2]), G.toY(u[3])]; }
   function renderReadout() {
@@ -3342,6 +3405,7 @@ var ChartPdf = (function () {
     if (m === 'bg') return app.bgTool === 'wand' ? 'tap' : 'draw';
     if (app.tab === 'edit' && m === 'pattern') return app.tool === 'move' ? 'pan' : app.tool === 'eyedropper' || EXTRA_TOOLS.test(app.tool) ? 'tap' : 'draw';
     if (app.tab === 'edge' && m === 'pattern' && app.pattern && E.overcastLayout(app.pattern)) return app.edgeTool === 'ring' ? 'tap' : 'draw';
+    if (app.tab === 'stitch' && m === 'pattern' && app.pattern) return app.stitchTool === 'mark' ? 'draw' : 'pan';
     return 'pan';
   }
   stage.addEventListener('pointerdown', function (ev) {
@@ -3424,6 +3488,11 @@ var ChartPdf = (function () {
       var c = cellUnder(x, y);
       g.sub = 'stroke'; g.base = app.pattern; g.cells = []; g.last = c;
       addStroke(c);
+    } else if (app.tab === 'stitch') {
+      // Marking stitches done: a stroke that starts on a done square unmarks instead.
+      var s0 = cellUnder(x, y);
+      g.sub = 'stroke'; g.base = app.pattern; g.cells = []; g.last = s0; g.mark = !(inGrid(s0) && E.isDone(app.pattern, s0[0], s0[1]));
+      addStroke(s0);
     } else if (app.tab === 'edge') {
       g.sub = 'edge'; g.base = app.pattern; g.segs = [];
       addEdge(x, y);
@@ -3542,6 +3611,7 @@ var ChartPdf = (function () {
   function addStroke(c) {
     if (!inGrid(c)) return;
     gesture.cells.push(c);
+    if (app.tab === 'stitch') { app.pattern = E.withDone(gesture.base, gesture.cells, gesture.mark); render(); return; }
     var cmd = app.tool === 'eraser' ? { type: 'erase', cells: gesture.cells } : { type: 'paint', floss: app.floss || DEFAULT_FLOSS, cells: gesture.cells };
     app.pattern = E.apply(gesture.base, cmd);
     render();
@@ -3697,6 +3767,17 @@ var ChartPdf = (function () {
     pressed($('#splitDiag'), 'data-diag', app.splitDiag);
     pressed($('#extraStitches'), 'data-extra', extra ? 1 : 0);
     $('#strip').innerHTML = stripHtml(pal);
+    // Stitch
+    pressed($('#stitchTool'), 'data-stitchtool', app.stitchTool);
+    if (p && app.tab === 'stitch') {
+      var pr = E.progress(p), pct = pr.total ? Math.round(pr.done / pr.total * 100) : 0;
+      $('#progressText').textContent = pct + '% done: ' + pr.done + ' of ' + plural(pr.total, 'square') + ' stitched.';
+      $('#progressBar').style.width = pct + '%';
+      $('#progressList').innerHTML = pr.threads.map(function (f) {
+        return '<button class="floss" data-floss="' + f.code + '" aria-pressed="' + (app.selected === f.code) + '"><span class="swatch" style="background:' + f.hex + ';color:' + (lum(f.hex) < 0.45 ? '#fff' : '#4A1D5E') + '">' + (symOf[f.code] || '') + '</span>' +
+          '<span><span class="code">DMC ' + f.code + '</span><br><span class="nm">' + f.name + '</span></span><span class="ct">' + (f.total - f.done ? (f.total - f.done) + ' left' : 'done') + '</span></button>';
+      }).join('');
+    }
     // Edge
     var L = p && E.overcastLayout(p);
     $('[data-tab=edge]').hidden = !over;
@@ -4470,6 +4551,7 @@ var ChartPdf = (function () {
     if (t.dataset.shape === 'cutout') { setBlank({ shape: 'cutout', longIn: +$('#longIn').value || 2, count: app.blank.count, finish: 'overcast' }); return; }
     if (t.dataset.fit) { if (app.pattern && !app.photo) setFit(t.dataset.fit); return; }
     if (t.dataset.finish) { setBlank(Object.assign({}, app.blank, { finish: t.dataset.finish })); return; }
+    if (t.dataset.stitchtool) { app.stitchTool = t.dataset.stitchtool; renderPanels(); return; }
     if (t.dataset.bgtool) { app.bgTool = t.dataset.bgtool; renderPanels(); render(); return; }
     if (t.dataset.confetti) { if (!app.photo) return; app.confetti = +t.dataset.confetti; rebuild(); return; }
     if (t.dataset.floss) { app.selected = app.selected === t.dataset.floss ? null : t.dataset.floss; if (app.selected) app.floss = app.selected; renderPanels(); render(); return; }
@@ -4531,6 +4613,9 @@ var ChartPdf = (function () {
       case 'reset-view': app.view = { zoom: 1, panX: 0, panY: 0 }; app.bgView = { zoom: 1, panX: 0, panY: 0 }; render(); break;
       case 'export': exportPdf(); break;
       case 'export-oxs': exportOxs(); break;
+      case 'clear-progress':
+        if (app.pattern && E.progress(app.pattern).done && confirm('Clear every stitch marked done?')) { app.pattern = E.clearDone(app.pattern); changed(); }
+        break;
       case 'close-dialog': t.closest('dialog').close(); break;
       case 'new-pattern': $('#patterns').close(); startNew(); break;
     }

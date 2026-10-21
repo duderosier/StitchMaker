@@ -175,6 +175,22 @@ try {
   await tab(page, 'chart');
   const chartTxt = await page.textContent('#chartSummary');
   check(/1 half stitch\b/.test(chartTxt) && /1 quarter stitch\b/.test(chartTxt) && /1 French knot\b/.test(chartTxt), `the Half, Quarter and Knot tools add their stitches (${chartTxt})`);
+  await tab(page, 'stitch');
+  const b4 = await page.locator('#stage').boundingBox();
+  const mx = b4.x + b4.width / 2, my = b4.y + b4.height / 2;
+  await page.mouse.move(mx - 45, my - 24); await page.mouse.down(); // one zigzag stroke over the middle
+  for (let k = 0, dy = -24; dy <= 24; dy += 4, k++) {
+    await page.mouse.move(mx + (k % 2 ? -45 : 45), my + dy, { steps: 6 });
+    await page.mouse.move(mx + (k % 2 ? -45 : 45), my + dy + 4, { steps: 1 });
+  }
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const progressTxt = await page.textContent('#progressText');
+  check(/^\d+% done: [1-9]\d* of/.test(progressTxt), `dragging on the Stitch step marks stitches done (${progressTxt})`);
+  await page.click('#progressList .floss'); await page.waitForTimeout(100);
+  check(await page.getAttribute('#progressList .floss', 'aria-pressed') === 'true', 'tapping a thread on the Stitch step highlights it');
+  await page.click('#progressList .floss');
+  await tab(page, 'chart');
   const [oxsDownload] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.click('[data-act=export-oxs]')]);
   const oxsPath = await oxsDownload.path(), oxsText = await readFile(oxsPath, 'utf8');
   check(/<chart>/.test(oxsText) && /objecttype="knot"/.test(oxsText) && /direction="[34]"/.test(oxsText), `Save .oxs file writes an .oxs chart (${oxsDownload.suggestedFilename()})`);
