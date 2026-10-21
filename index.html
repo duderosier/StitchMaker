@@ -511,6 +511,7 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
       <div class="seg" id="tool">
         <button data-tool="pencil" aria-pressed="true">Pencil</button>
         <button data-tool="eraser">Eraser</button>
+        <button data-tool="fill">Fill</button>
         <button data-tool="eyedropper">Pick color</button>
         <button data-tool="split" id="toolSplit" hidden>Split</button>
         <button data-tool="line" id="toolLine" hidden>Line</button>
@@ -518,6 +519,11 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
         <button data-tool="quarter" class="js-extra-tool" hidden>Quarter</button>
         <button data-tool="knot" class="js-extra-tool" hidden>Knot</button>
         <button data-tool="move">Move</button>
+      </div>
+      <div class="row" id="fillRow" hidden><span class="field-label">Fill</span>
+        <div class="seg" id="fillAll">
+          <button data-fillall="0">Touching squares</button><button data-fillall="1">All of this color</button>
+        </div>
       </div>
       <div class="row" id="splitRow" hidden><span class="field-label">Diagonal</span>
         <div class="seg" id="splitDiag">
@@ -2672,6 +2678,30 @@ var PatternEngine = (function () {
     };
   }
   function cellAt(p, x, y) { var f = effectiveCells(p)[y * p.cols + x]; return f >= 0 ? flossOut(f) : null; }
+  // The squares a paint-bucket fill from (x, y) takes: the full Stitches of the tapped square's Floss (or the
+  // Unstitched squares) touching it side to side, inside the Blank. Split, half and quarter squares are walls and
+  // cannot be filled. With all, every such square anywhere, enclosed ones too. Returns [[x, y], ...].
+  function fillCells(p, x, y, opts) {
+    var inside = insideOf(p), W = p.cols, H = p.rows;
+    function plain(c) { return inside[c] && !p.splits[c] && !(p.halves && p.halves[c]) && !(p.quarters && p.quarters[c]); }
+    if (x < 0 || y < 0 || x >= W || y >= H || !plain(y * W + x)) return [];
+    var v = p.cells[y * W + x], out = [], c;
+    function same(c) { return p.cells[c] === v && plain(c); }
+    if (opts && opts.all) { for (c = 0; c < W * H; c++) if (same(c)) out.push([c % W, Math.floor(c / W)]); return out; }
+    var seen = new Uint8Array(W * H), stack = [y * W + x];
+    seen[y * W + x] = 1;
+    while (stack.length) {
+      c = stack.pop();
+      var cx = c % W, cy = (c - cx) / W;
+      out.push([cx, cy]);
+      [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]].forEach(function (n) {
+        var k = n[1] * W + n[0];
+        if (n[0] < 0 || n[1] < 0 || n[0] >= W || n[1] >= H || seen[k] || !same(k)) return;
+        seen[k] = 1; stack.push(k);
+      });
+    }
+    return out;
+  }
   // A Split Cell's diagonal and triangles (each a Floss, or null for Unstitched), or null for any other cell.
   function splitAt(p, x, y) {
     var t = effectiveSplits(p)[y * p.cols + x];
@@ -2745,7 +2775,7 @@ var PatternEngine = (function () {
     createBlankPattern: createBlankPattern, reshape: reshape, shrinkToFit: shrinkToFit, fitsBlank: fitsBlank, rebase: rebase,
     readChart: readChart, estimateGridCounts: estimateGridCounts, fitChartGrid: fitChartGrid, gridPoint: gridPoint, cornerGrid: cornerGrid, guessChartCorners: guessChartCorners,
     createImportedPattern: createImportedPattern, chartBlank: chartBlank, keyCodesFromText: keyCodesFromText, keyGuesses: keyGuesses, keyPairsFromText: keyPairsFromText, cellSymbols: cellSymbols, symbolKeyGuesses: symbolKeyGuesses, chartPartOffset: chartPartOffset, joinChartPart: joinChartPart,
-    blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette,
+    blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, fillCells: fillCells, palette: palette,
     splitAt: splitAt, splitList: splitList, threadUsage: threadUsage, withDone: withDone, clearDone: clearDone, isDone: isDone, progress: progress, oxsExport: oxsExport, oxsImport: oxsImport, halfList: halfList, quarterList: quarterList, knots: knots, knotLegend: knotLegend, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, withFit: withFit, splitTriangles: splitTriangles, splitSide: splitSide
   };
 })();
@@ -2981,7 +3011,7 @@ var ChartPdf = (function () {
     blank: { shape: 'preset', presetId: 'round-2', count: 14, finish: 'framed' },
     photo: null, masked: null, mask: null, maskPast: [], maskFuture: [], maskOverlay: null,
     frame: null, colorCount: 6, confetti: 1, dither: false, pattern: null,
-    tab: 'photo', tool: 'pencil', stitchTool: 'mark', splitDiag: '/', lineFrom: null, edgeTool: 'ring', bgTool: 'wand', tolerance: 20, brush: 24,
+    tab: 'photo', tool: 'pencil', stitchTool: 'mark', splitDiag: '/', fillAll: false, lineFrom: null, edgeTool: 'ring', bgTool: 'wand', tolerance: 20, brush: 24,
     floss: null, selected: null, showPhoto: false, bw: false,
     source: null, // an imported Source Chart: { page, straight (canvases), corners, cols, rows, flosses }
     fitFrom: null, // { from, to }: the design before the last Blank change and what it became (Shrink to fit / Crop)
@@ -3395,7 +3425,7 @@ var ChartPdf = (function () {
     } else {
       sctx.lineWidth = 2; sctx.strokeStyle = '#6B3482'; sctx.lineCap = 'square'; sctx.stroke(outlinePath(G));
     }
-    var hints = { edit: { pencil: 'Tap or drag to stitch', eraser: 'Tap or drag to unstitch', eyedropper: 'Tap a Stitch to pick its color', move: 'Drag to move, pinch to zoom', split: 'Tap half a square to stitch it; tap again to clear', half: 'Tap a square for a half stitch along the diagonal', quarter: 'Tap a corner of a square for a quarter stitch', knot: 'Tap a corner or a square\'s middle for a French knot', line: app.lineFrom ? 'Tap another corner; tap this one to finish' : 'Tap a corner to start a line; tap a line to remove it' },
+    var hints = { edit: { pencil: 'Tap or drag to stitch', eraser: 'Tap or drag to unstitch', eyedropper: 'Tap a Stitch to pick its color', fill: app.fillAll ? 'Tap a square to recolor all of its color' : 'Tap a square to fill the area of its color', move: 'Drag to move, pinch to zoom', split: 'Tap half a square to stitch it; tap again to clear', half: 'Tap a square for a half stitch along the diagonal', quarter: 'Tap a corner of a square for a quarter stitch', knot: 'Tap a corner or a square\'s middle for a French knot', line: app.lineFrom ? 'Tap another corner; tap this one to finish' : 'Tap a corner to start a line; tap a line to remove it' },
       edge: { ring: 'Tap where the Ring Hole goes', edgepaint: 'Tap edge stitches to paint them' },
       stitch: { mark: 'Tap or drag over stitches you have finished', move: 'Drag to move, pinch to zoom' } };
     setHint(app.tab === 'edit' ? hints.edit[app.tool] : app.tab === 'edge' && L ? hints.edge[app.edgeTool] : app.tab === 'stitch' ? hints.stitch[app.stitchTool] : '');
@@ -3428,7 +3458,7 @@ var ChartPdf = (function () {
     var m = viewMode();
     if (app.tab === 'photo') return app.photo ? 'frame' : 'pan';
     if (m === 'bg') return app.bgTool === 'wand' ? 'tap' : 'draw';
-    if (app.tab === 'edit' && m === 'pattern') return app.tool === 'move' ? 'pan' : app.tool === 'eyedropper' || EXTRA_TOOLS.test(app.tool) ? 'tap' : 'draw';
+    if (app.tab === 'edit' && m === 'pattern') return app.tool === 'move' ? 'pan' : app.tool === 'eyedropper' || app.tool === 'fill' || EXTRA_TOOLS.test(app.tool) ? 'tap' : 'draw';
     if (app.tab === 'edge' && m === 'pattern' && app.pattern && E.overcastLayout(app.pattern)) return app.edgeTool === 'ring' ? 'tap' : 'draw';
     if (app.tab === 'stitch' && m === 'pattern' && app.pattern) return app.stitchTool === 'mark' ? 'draw' : 'pan';
     return 'pan';
@@ -3563,6 +3593,8 @@ var ChartPdf = (function () {
       lineTap(x, y);
     } else if (app.tab === 'edit' && (app.tool === 'half' || app.tool === 'quarter' || app.tool === 'knot')) {
       partTap(x, y);
+    } else if (app.tab === 'edit' && app.tool === 'fill') {
+      fillTap(x, y);
     } else if (app.tab === 'edit') {
       var c = cellUnder(x, y), hit = inGrid(c) && E.cellAt(app.pattern, c[0], c[1]);
       var sp = inGrid(c) && !hit && E.splitAt(app.pattern, c[0], c[1]);
@@ -3630,6 +3662,17 @@ var ChartPdf = (function () {
     var corner = (gy - c[1] < 0.5 ? 'n' : 's') + (gx - c[0] < 0.5 ? 'w' : 'e');
     var q = E.quarterList(p).filter(function (t) { return t.x === c[0] && t.y === c[1] && t.corner === corner; })[0];
     edit({ type: 'quarter', cells: [c], corner: corner, floss: q && q.code === f ? null : f });
+  }
+  // The Fill tool: the tapped square and every square of its color touching it (or all of that color) take the
+  // current Floss, as one edit.
+  function fillTap(x, y) {
+    var c = cellUnder(x, y), p = app.pattern, f = app.floss || DEFAULT_FLOSS;
+    if (!inGrid(c)) return;
+    var cells = E.fillCells(p, c[0], c[1], { all: app.fillAll }), was = E.cellAt(p, c[0], c[1]);
+    if (!cells.length) { toast('Split, half and quarter squares can\'t be filled. Use the Pencil.'); return; }
+    if (was && was.code === f) return;
+    edit({ type: 'paint', floss: f, cells: cells });
+    toast('Filled ' + plural(cells.length, 'square') + ' with DMC ' + f);
   }
   var EXTRA_TOOLS = /^(split|line|half|quarter|knot)$/;
   function inGrid(c) { return c[0] >= 0 && c[1] >= 0 && c[0] < app.pattern.cols && c[1] < app.pattern.rows; }
@@ -3791,6 +3834,8 @@ var ChartPdf = (function () {
     $$('.js-extra-tool').forEach(function (el) { el.hidden = !extra; });
     pressed($('#tool'), 'data-tool', app.tool);
     $('#splitRow').hidden = app.tool !== 'split' && app.tool !== 'half';
+    $('#fillRow').hidden = app.tool !== 'fill';
+    pressed($('#fillAll'), 'data-fillall', app.fillAll ? 1 : 0);
     pressed($('#splitDiag'), 'data-diag', app.splitDiag);
     pressed($('#extraStitches'), 'data-extra', extra ? 1 : 0);
     $('#strip').innerHTML = stripHtml(pal);
@@ -4585,7 +4630,8 @@ var ChartPdf = (function () {
     if (t.dataset.floss) { app.selected = app.selected === t.dataset.floss ? null : t.dataset.floss; if (app.selected) app.floss = app.selected; renderPanels(); render(); return; }
     if (t.dataset.tool && t.closest('#tool')) { setTool(t.dataset.tool); return; }
     if (t.dataset.tool && t.closest('#edgeTool')) { app.edgeTool = t.dataset.tool; renderPanels(); render(); return; }
-    if (t.dataset.pick) { app.floss = t.dataset.pick; if (app.tab === 'edit' && app.tool !== 'pencil' && !EXTRA_TOOLS.test(app.tool)) app.tool = 'pencil'; renderPanels(); return; }
+    if (t.dataset.pick) { app.floss = t.dataset.pick; if (app.tab === 'edit' && app.tool !== 'pencil' && app.tool !== 'fill' && !EXTRA_TOOLS.test(app.tool)) app.tool = 'pencil'; renderPanels(); return; }
+    if (t.dataset.fillall) { app.fillAll = t.dataset.fillall === '1'; renderPanels(); return; }
     if (t.dataset.diag) { app.splitDiag = t.dataset.diag; renderPanels(); return; }
     if (t.dataset.extra) {
       if (!app.pattern) return;
