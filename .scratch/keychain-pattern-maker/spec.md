@@ -27,7 +27,7 @@ A single-page app, delivered as one self-contained HTML file served from GitHub 
 
 ### Photo and framing
 12. As a stitcher, I want to pick a photo from my phone's library or take one with the camera, so that I can use any image I have.
-13. As a stitcher, I want to pan, zoom (pinch) and rotate the photo inside the Blank's outline, starting from an automatic fit, so that the subject fills the small keychain well.
+13. As a stitcher, I want to drag the photo inside the Blank's outline and size and turn it with Zoom and Turn controls, starting from an automatic fit, so that the subject fills the small keychain well.
 14. As a stitcher, I want to see the Blank outline over the photo while framing, so that I can tell what will be cut off.
 15. As a stitcher, I want large phone photos to load quickly, so that the app stays responsive.
 16. As a stitcher, I want photo orientation from the camera to be respected, so that portrait shots aren't sideways.
@@ -43,7 +43,7 @@ A single-page app, delivered as one self-contained HTML file served from GitHub 
 24. As a stitcher, I want to undo Background edits, so that a bad tap isn't permanent.
 
 ### Color reduction
-25. As a stitcher, I want a Color Count slider from 2 to 16, so that I can simplify the design like Cricut does.
+25. As a stitcher, I want a Color Count slider from 2 to 20, so that I can simplify the design like Cricut does.
 26. As a stitcher, I want every Floss in the Palette to be a real DMC color with its number and name, so that I can buy the thread.
 27. As a stitcher, I want colors chosen to look as close as possible to the photo, so that the Pattern resembles the subject.
 28. As a stitcher, I want flat color regions with no dithering, so that the Pattern is pleasant to stitch.
@@ -86,6 +86,13 @@ A single-page app, delivered as one self-contained HTML file served from GitHub 
 59. As a stitcher, I want to repaint individual Edge Stitches on top of either mode, so that I can fine-tune the edge.
 60. As a stitcher, I want Edge Flosses not to count toward the Color Count, so that the edge doesn't steal design colors.
 61. As a stitcher, I want Framed Blanks to offer no Ring Hole or Edge Stitches, so that I'm not shown options that don't apply.
+
+### Preview
+82. As a stitcher, I want to pinch to zoom and drag to move around the preview on every step, so that I can inspect details anywhere.
+83. As a stitcher, I want a full-screen button on the preview, so that I can look at the Pattern large.
+84. As a stitcher, I want a toggle on the Colors and Edit steps that shows the original photo lined up with the Pattern, so that I can compare while editing.
+85. As a phone user, I want sliders to change only when I drag them sideways, so that scrolling the page over them never changes a setting.
+86. As a phone user, I want the preview to keep its size while I scroll or switch steps, and hints to get out of the way while I touch it.
 
 ### Chart (PDF)
 62. As a stitcher, I want to export a one-page Letter PDF Chart, so that I can print it or keep it on my phone.

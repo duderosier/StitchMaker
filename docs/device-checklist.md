@@ -9,7 +9,9 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 ## Photo
 - [ ] Choose photo offers Photo Library and Take Photo; a portrait camera shot is upright.
 - [ ] A large (12 MP) photo loads in a couple of seconds.
-- [ ] Photo step: one-finger drag moves the photo inside the red outline; pinch zooms; twisting two fingers turns it; Turn/Zoom sliders and ⟲/⟳ 90° work; Fit to Blank resets.
+- [ ] Photo step: one-finger drag moves the photo inside the outline; Zoom/Turn sliders and ⟲/⟳ 90° size and turn it; Fit to Blank resets.
+- [ ] Every step: pinch zooms the preview and two fingers move it; the full-screen button and the magnifier (show whole preview) work.
+- [ ] Scrolling the controls with a finger over a slider never changes it; dragging sideways does. The preview never changes size while scrolling.
 
 ## Background
 - [ ] Magic wand: tapping the backdrop tints it red; the tolerance slider changes how much one tap takes.
