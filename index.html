@@ -493,13 +493,23 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
         <button data-tool="pencil" aria-pressed="true">Pencil</button>
         <button data-tool="eraser">Eraser</button>
         <button data-tool="eyedropper">Pick color</button>
+        <button data-tool="split" id="toolSplit" hidden>Split</button>
         <button data-tool="move">Move</button>
+      </div>
+      <div class="row" id="splitRow" hidden><span class="field-label">Diagonal</span>
+        <div class="seg" id="splitDiag">
+          <button data-diag="/" aria-label="Bottom-left to top-right">╱</button><button data-diag="\" aria-label="Top-left to bottom-right">╲</button>
+        </div>
       </div>
       <div class="strip" id="strip"></div>
       <div class="actions">
         <button class="secondary js-compare" aria-pressed="false">Show original photo</button>
         <button class="secondary" data-act="reset-view">Show whole pattern</button>
       </div>
+      <div class="row"><span class="field-label">Extra stitch types</span>
+        <div class="seg" id="extraStitches"><button data-extra="0">Off</button><button data-extra="1">On</button></div>
+      </div>
+      <p class="muted" id="extraNote">On adds the Split tool for ¾ stitches: two colors in one square, split along a diagonal.</p>
       <p class="muted">Use two fingers to zoom and move the grid.</p>
     </div>
 
@@ -918,7 +928,7 @@ var PatternEngine = (function () {
     return {
       v: 1, blank: blank, cols: g.cols, rows: g.rows,
       colorCount: opts.colorCount || 6, confetti: confetti,
-      cells: cells, palette: pal, overcast: overcast, edits: [], past: [], future: []
+      cells: cells, splits: {}, palette: pal, overcast: overcast, extraStitches: false, edits: [], past: [], future: []
     };
   }
 
@@ -926,14 +936,29 @@ var PatternEngine = (function () {
   var HISTORY_LIMIT = 100;
   // The editable state of a Pattern. `edits` lists the Palette and Stitch edits since the photo was reduced,
   // so they can be replayed when the Pattern is rebuilt (see rebase).
+  // Split Cells live beside `cells` (where they are Unstitched), keyed by cell index:
+  // { diagonal: '/' (a = top-left triangle, b = bottom-right) or '\\' (a = top-right, b = bottom-left), a, b }
+  // with a Floss index or -1 per triangle. Entries are never mutated, only replaced.
   function snapshot(p) {
-    return { cells: p.cells.slice(), palette: p.palette.slice(), overcast: JSON.parse(JSON.stringify(p.overcast || null)), edits: (p.edits || []).slice() };
+    return { cells: p.cells.slice(), splits: Object.assign({}, p.splits || {}), palette: p.palette.slice(), overcast: JSON.parse(JSON.stringify(p.overcast || null)), edits: (p.edits || []).slice() };
   }
   function withState(p, snap, past, future) {
     var q = {}; Object.keys(p).forEach(function (k) { q[k] = p[k]; });
-    q.cells = snap.cells; q.palette = snap.palette; q.overcast = snap.overcast; q.edits = snap.edits || []; q.past = past; q.future = future;
+    q.cells = snap.cells; q.splits = snap.splits || {}; q.palette = snap.palette; q.overcast = snap.overcast; q.edits = snap.edits || []; q.past = past; q.future = future;
     return q;
   }
+  // Store one Split Cell, settling it to a full Stitch (one Floss both sides) or Unstitched (neither).
+  function putSplit(cells, splits, c, diagonal, a, b) {
+    delete splits[c];
+    if (a === b) { cells[c] = a; return; }
+    cells[c] = -1;
+    splits[c] = { diagonal: diagonal, a: a, b: b };
+  }
+  function mapSplits(cells, splits, fn) {
+    Object.keys(splits).forEach(function (c) { var t = splits[c]; putSplit(cells, splits, +c, t.diagonal, fn(t.a), fn(t.b)); });
+  }
+  // The Pattern with the Split tool shown or hidden (a per-Pattern setting, not an edit).
+  function withExtraStitches(p, on) { var q = {}; Object.keys(p).forEach(function (k) { q[k] = p[k]; }); q.extraStitches = !!on; return q; }
   function flossIndex(code) {
     var f = DMC_BY_CODE[code];
     if (!f) throw new Error('Unknown DMC Floss: ' + code);
@@ -950,6 +975,7 @@ var PatternEngine = (function () {
         var from = flossIndex(cmd.from), to = flossIndex(cmd.type === 'merge' ? cmd.into : cmd.to);
         if (from === to) return p;
         for (i = 0; i < cells.length; i++) if (cells[i] === from) cells[i] = to;
+        mapSplits(cells, next.splits, function (f) { return f === from ? to : f; });
         var at = pal.indexOf(from);
         if (pal.indexOf(to) >= 0) pal.splice(at, 1); else pal[at] = to;
         break;
@@ -957,6 +983,7 @@ var PatternEngine = (function () {
       case 'unstitch': {
         var f = flossIndex(cmd.floss);
         for (i = 0; i < cells.length; i++) if (cells[i] === f) cells[i] = -1;
+        mapSplits(cells, next.splits, function (g) { return g === f ? -1 : g; });
         pal.splice(pal.indexOf(f), 1);
         break;
       }
@@ -972,7 +999,18 @@ var PatternEngine = (function () {
           var x = xy[0], y = xy[1];
           if (x < 0 || y < 0 || x >= p.cols || y >= p.rows) return;
           var c = y * p.cols + x;
-          if (inside[c]) cells[c] = v;
+          if (inside[c]) { cells[c] = v; delete next.splits[c]; }
+        });
+        break;
+      }
+      case 'split': {
+        var ia = cmd.a == null ? -1 : flossIndex(cmd.a), ib = cmd.b == null ? -1 : flossIndex(cmd.b), ins = insideOf(p);
+        if (cmd.diagonal !== '/' && cmd.diagonal !== '\\') throw new Error('A split runs / or \\');
+        [ia, ib].forEach(function (f) { if (f >= 0 && pal.indexOf(f) < 0) pal.push(f); });
+        cmd.cells.forEach(function (xy) {
+          var x = xy[0], y = xy[1];
+          if (x < 0 || y < 0 || x >= p.cols || y >= p.rows || !ins[y * p.cols + x]) return;
+          putSplit(cells, next.splits, y * p.cols + x, cmd.diagonal, ia, ib);
         });
         break;
       }
@@ -999,7 +1037,7 @@ var PatternEngine = (function () {
   function rebase(old, base) {
     var p = base, sameGrid = old.cols === base.cols && old.rows === base.rows;
     (old.edits || []).forEach(function (cmd) {
-      if (!sameGrid && (cmd.type === 'paint' || cmd.type === 'erase')) return;
+      if (!sameGrid && (cmd.type === 'paint' || cmd.type === 'erase' || cmd.type === 'split')) return;
       if ((cmd.type === 'merge' || cmd.type === 'swap' || cmd.type === 'unstitch') && p.palette.indexOf(flossIndex(cmd.from || cmd.floss)) < 0) return;
       if (cmd.type === 'merge' && p.palette.indexOf(flossIndex(cmd.into)) < 0) return;
       try { p = apply(p, cmd); } catch (err) { /* no longer applicable */ }
@@ -1036,7 +1074,7 @@ var PatternEngine = (function () {
     // 1. Base cut: the Preset Shape outline, or the Cut-Out's filled stitched area grown by the Margin.
     if (p.blank.shape === 'cutout') {
       var stitched = new Uint8Array(N), outside = new Uint8Array(N), stack = [];
-      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (p.cells[y * p.cols + x] >= 0) stitched[at(x, y)] = 1;
+      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (p.cells[y * p.cols + x] >= 0 || (p.splits && p.splits[y * p.cols + x])) stitched[at(x, y)] = 1;
       for (x = 0; x < C; x++) { stack.push(x, (R - 1) * C + x); }
       for (y = 0; y < R; y++) { stack.push(y * C, y * C + C - 1); }
       while (stack.length) {
@@ -1096,12 +1134,14 @@ var PatternEngine = (function () {
       }
     }
     // 3. Effective Stitches: anything inside a Ring Hole is Unstitched.
-    var cells = p.cells.slice();
+    var cells = p.cells.slice(), splits = {};
     for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (hole[at(x, y)]) cells[y * p.cols + x] = -1;
+    Object.keys(p.splits || {}).forEach(function (c) { var cx = c % p.cols, cy = (c - cx) / p.cols; if (!hole[at(cx, cy)]) splits[c] = p.splits[c]; });
     // 4. Nearest Stitch's Floss for every layout cell (for auto-match).
     var nearest = new Int32Array(N).fill(-1), queue = [];
     for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) {
-      var f = cells[y * p.cols + x];
+      var f = cells[y * p.cols + x], sp = splits[y * p.cols + x];
+      if (f < 0 && sp) f = sp.a >= 0 ? sp.a : sp.b;
       if (f >= 0) { nearest[at(x, y)] = f; queue.push(at(x, y)); }
     }
     for (var q = 0; q < queue.length; q++) {
@@ -1131,13 +1171,13 @@ var PatternEngine = (function () {
     var design;
     if (p.blank.shape === 'cutout') {
       var sx0 = Infinity, sy0 = Infinity, sx1 = -1, sy1 = -1;
-      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (p.cells[y * p.cols + x] >= 0) {
+      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (p.cells[y * p.cols + x] >= 0 || splits[y * p.cols + x]) {
         sx0 = Math.min(sx0, x); sy0 = Math.min(sy0, y); sx1 = Math.max(sx1, x); sy1 = Math.max(sy1, y);
       }
       design = sx1 < 0 ? { w: 0, h: 0 } : { w: inches(sx1 - sx0 + 1), h: inches(sy1 - sy0 + 1) };
     } else design = { w: inches(p.cols), h: inches(p.rows) };
     var out = {
-      cols: C, rows: R, offset: PAD, cut: cut, hole: hole, edges: edges, cells: cells,
+      cols: C, rows: R, offset: PAD, cut: cut, hole: hole, edges: edges, cells: cells, splits: splits,
       bounds: x1 < 0 ? null : { x0: x0, y0: y0, x1: x1, y1: y1 },
       designSize: design,
       overallSize: x1 < 0 ? { w: 0, h: 0 } : { w: inches(x1 - x0 + 1), h: inches(y1 - y0 + 1) }
@@ -1147,6 +1187,7 @@ var PatternEngine = (function () {
   }
   // The Pattern's Stitches as stitched: Ring Hole cells are Unstitched.
   function effectiveCells(p) { var L = overcastLayout(p); return L ? L.cells : p.cells; }
+  function effectiveSplits(p) { var L = overcastLayout(p); return L ? L.splits : (p.splits || {}); }
   function edgeLegend(p) {
     var L = overcastLayout(p);
     if (!L) return [];
@@ -1170,26 +1211,32 @@ var PatternEngine = (function () {
 
   // ---------- saving ----------
   // Cells are stored against DMC codes, not table positions, so saved Patterns survive table changes.
+  // Split Cells save as { cell: [diagonal, a, b] } against the same code list; older saves have none.
   function toSaved(snap) {
-    var codes = snap.palette.map(function (i) { return DMC[i].code; }), extra = {};
-    snap.cells.forEach(function (f) { if (f >= 0 && snap.palette.indexOf(f) < 0 && !extra[f]) extra[f] = 1; });
-    Object.keys(extra).forEach(function (f) { codes.push(DMC[f].code); });
-    var all = codes.map(flossIndex);
-    return { codes: codes, paletteLength: snap.palette.length, cells: snap.cells.map(function (f) { return f < 0 ? -1 : all.indexOf(f); }), overcast: snap.overcast, edits: snap.edits || [] };
+    var codes = snap.palette.map(function (i) { return DMC[i].code; }), extra = {}, splits = snap.splits || {};
+    function note(f) { if (f >= 0 && snap.palette.indexOf(f) < 0 && !extra[f]) { extra[f] = 1; codes.push(DMC[f].code); } }
+    snap.cells.forEach(note);
+    Object.keys(splits).forEach(function (c) { note(splits[c].a); note(splits[c].b); });
+    var all = codes.map(flossIndex), saved = {};
+    function k(f) { return f < 0 ? -1 : all.indexOf(f); }
+    Object.keys(splits).forEach(function (c) { saved[c] = [splits[c].diagonal, k(splits[c].a), k(splits[c].b)]; });
+    return { codes: codes, paletteLength: snap.palette.length, cells: snap.cells.map(k), splits: saved, overcast: snap.overcast, edits: snap.edits || [] };
   }
   function fromSaved(o) {
-    var all = o.codes.map(flossIndex);
-    return { palette: all.slice(0, o.paletteLength), cells: o.cells.map(function (k) { return k < 0 ? -1 : all[k]; }), overcast: o.overcast || null, edits: o.edits || [] };
+    var all = o.codes.map(flossIndex), splits = {};
+    function f(k) { return k < 0 ? -1 : all[k]; }
+    Object.keys(o.splits || {}).forEach(function (c) { var t = o.splits[c]; splits[c] = { diagonal: t[0], a: f(t[1]), b: f(t[2]) }; });
+    return { palette: all.slice(0, o.paletteLength), cells: o.cells.map(f), splits: splits, overcast: o.overcast || null, edits: o.edits || [] };
   }
   function serialize(p) {
     return {
-      v: 1, blank: p.blank, cols: p.cols, rows: p.rows, colorCount: p.colorCount, confetti: p.confetti,
+      v: 1, blank: p.blank, cols: p.cols, rows: p.rows, colorCount: p.colorCount, confetti: p.confetti, extraStitches: !!p.extraStitches,
       now: toSaved(snapshot(p)), past: (p.past || []).map(toSaved), future: (p.future || []).map(toSaved)
     };
   }
   function deserialize(o) {
     if (!o || o.v !== 1) throw new Error('Unrecognised saved Pattern');
-    var base = { v: 1, blank: o.blank, cols: o.cols, rows: o.rows, colorCount: o.colorCount, confetti: o.confetti };
+    var base = { v: 1, blank: o.blank, cols: o.cols, rows: o.rows, colorCount: o.colorCount, confetti: o.confetti, extraStitches: !!o.extraStitches };
     return withState(base, fromSaved(o.now), o.past.map(fromSaved), o.future.map(fromSaved));
   }
 
@@ -1364,22 +1411,35 @@ var PatternEngine = (function () {
   }
   // Each cell's printed tint (its lighter pixels) and how much of it is ink (a symbol), from its inner area so
   // gridlines don't count.
+  // Also samples the cell's four quarters between its diagonals (N, E, S, W), for finding Split Cells.
   function sampleCells(img, grid) {
     var cols = grid.cols, rows = grid.rows, out = [];
-    var n = Math.max(5, Math.min(11, Math.round(grid.cellPx * 0.7)));
+    var n = Math.max(5, Math.min(11, Math.round(grid.cellPx * 0.7))), m = Math.max(8, Math.min(14, Math.round(grid.cellPx * 0.8)));
     for (var y = 0; y < rows; y++) for (var x = 0; x < cols; x++) {
-      var px = [];
+      var px = [], quarters = { N: [], E: [], S: [], W: [] };
       for (var j = 0; j < n; j++) for (var i = 0; i < n; i++) {
         var q = gridPoint(grid, x + 0.25 + 0.5 * (i + 0.5) / n, y + 0.25 + 0.5 * (j + 0.5) / n);
         var rgb = pixelAt(img, q[0], q[1]); px.push({ rgb: rgb, lab: rgbToLab(rgb) });
       }
-      px.sort(function (A, B) { return B.lab[0] - A.lab[0]; });
-      var half = px.slice(0, Math.ceil(px.length * 0.3)), t = [0, 0, 0];
-      half.forEach(function (s) { t[0] += s.rgb[0]; t[1] += s.rgb[1]; t[2] += s.rgb[2]; });
-      t = t.map(function (v2) { return v2 / half.length; });
-      out.push({ rgb: t, lab: rgbToLab(t), px: px }); // ink is measured once the lighting is known
+      for (j = 0; j < m; j++) for (i = 0; i < m; i++) {
+        var u = 0.14 + 0.72 * (i + 0.5) / m, v = 0.14 + 0.72 * (j + 0.5) / m, du = u - 0.5, dv = v - 0.5;
+        if (Math.abs(Math.abs(du) - Math.abs(dv)) < 0.07) continue; // the diagonals themselves
+        var side = Math.abs(dv) > Math.abs(du) ? (dv < 0 ? 'N' : 'S') : (du < 0 ? 'W' : 'E');
+        var p2 = gridPoint(grid, x + u, y + v), c2 = pixelAt(img, p2[0], p2[1]);
+        quarters[side].push({ rgb: c2, lab: rgbToLab(c2) });
+      }
+      var t = lightTint(px);
+      Object.keys(quarters).forEach(function (k) { quarters[k] = { px: quarters[k], rgb: lightTint(quarters[k]) }; });
+      out.push({ rgb: t, lab: rgbToLab(t), px: px, quarters: quarters }); // ink is measured once the lighting is known
     }
     return out;
+  }
+  // A printed tint: the average of the lightest 30% of pixels, so symbols and lines don't darken it.
+  function lightTint(px) {
+    var sorted = px.slice().sort(function (A, B) { return B.lab[0] - A.lab[0]; });
+    var top = sorted.slice(0, Math.max(1, Math.ceil(sorted.length * 0.3))), t = [0, 0, 0];
+    top.forEach(function (s) { t[0] += s.rgb[0]; t[1] += s.rgb[1]; t[2] += s.rgb[2]; });
+    return t.map(function (v) { return v / top.length; });
   }
   // How many stitches across and down: gridlines run through the whole chart, so averaging darkness along
   // them makes each line a peak; the count is the one whose evenly spaced positions best match those peaks.
@@ -1477,11 +1537,15 @@ var PatternEngine = (function () {
       use = s.map(function (c, k) { return dE76(c.lab, rgbToLab(white[k])) < 8; });
     }
     s.forEach(function (c) { c.paperL = 100; });
-    if (!white) { var Lmax = Ls[Math.floor(Ls.length * 0.9)]; s.forEach(function (c) { c.paperL = Lmax; }); return; }
+    function labQuarters(c) { if (c.quarters) Object.keys(c.quarters).forEach(function (k) { c.quarters[k].lab = rgbToLab(c.quarters[k].rgb); }); }
+    if (!white) { var Lmax = Ls[Math.floor(Ls.length * 0.9)]; s.forEach(function (c) { c.paperL = Lmax; labQuarters(c); }); return; }
     s.forEach(function (c, k) {
+      function even(rgb) { return rgb.map(function (v, ch) { return Math.min(255, v * 255 / white[k][ch]); }); }
       c.paperL = rgbToLab(white[k])[0];
-      c.rgb = c.rgb.map(function (v, ch) { return Math.min(255, v * 255 / white[k][ch]); });
+      c.rgb = even(c.rgb);
       c.lab = rgbToLab(c.rgb);
+      if (c.quarters) Object.keys(c.quarters).forEach(function (q) { c.quarters[q].rgb = even(c.quarters[q].rgb); });
+      labQuarters(c);
     });
   }
   var INK_MARK = 0.04;  // a cell with more ink than this carries a symbol
@@ -1490,11 +1554,37 @@ var PatternEngine = (function () {
     var cols = opts.cols, rows = opts.rows, grid = fitChartGrid(img, opts.corners, cols, rows), s = sampleCells(img, grid);
     evenLighting(s, cols, rows);
     // A symbol is a properly dark mark; thin grey lines (a design circle, a bold gridline at the edge) are not.
-    s.forEach(function (c) {
-      var ink = 0, cut = Math.min(c.lab[0] - 25, c.paperL - 50);
-      c.px.forEach(function (p) { if (p.lab[0] < cut) ink++; });
-      c.ink = ink / c.px.length; c.px = null;
+    function inkOf(px, L, paperL) {
+      var ink = 0, cut = Math.min(L - 25, paperL - 50);
+      px.forEach(function (p) { if (p.lab[0] < cut) ink++; });
+      return px.length ? ink / px.length : 0;
+    }
+    // Split Cells: two quarters either side of one diagonal match each other and differ from the other two.
+    var SPLITS = { '/': [['N', 'W'], ['S', 'E']], '\\': [['N', 'E'], ['S', 'W']] };
+    function splitOf(c) {
+      var q = c.quarters, found = null;
+      Object.keys(SPLITS).forEach(function (d) {
+        var A = SPLITS[d][0], B = SPLITS[d][1];
+        function d2(a, b) { return dE76(q[a].lab, q[b].lab); }
+        if (d2(A[0], A[1]) > 12 || d2(B[0], B[1]) > 12) return;
+        if (Math.min(d2(A[0], B[0]), d2(A[0], B[1]), d2(A[1], B[0]), d2(A[1], B[1])) < 20) return;
+        found = { diagonal: d, halves: [A, B] };
+      });
+      return found;
+    }
+    // Items to group: one per cell, or one per triangle of a Split Cell.
+    var items = [];
+    s.forEach(function (c, k) {
+      var sp = splitOf(c);
+      if (!sp) { items.push({ cell: k, lab: c.lab, rgb: c.rgb, ink: inkOf(c.px, c.lab[0], c.paperL) }); return; }
+      c.split = sp.diagonal;
+      sp.halves.forEach(function (h, side) {
+        var A = c.quarters[h[0]], B = c.quarters[h[1]], rgb = [0, 1, 2].map(function (ch) { return (A.rgb[ch] + B.rgb[ch]) / 2; }), lab = rgbToLab(rgb);
+        items.push({ cell: k, side: side, lab: lab, rgb: rgb, ink: inkOf(A.px.concat(B.px), lab[0], c.paperL) });
+      });
     });
+    s.forEach(function (c) { c.px = null; c.quarters = null; });
+    var cellsSample = s; s = items;
     // Paper: white once the lighting is evened out, with no symbol.
     function isPaper(c) { return c.ink <= INK_MARK && dE76(c.lab, [100, 0, 0]) < 9; }
     function dist(c, g) { return dE76(c.lab, g.lab) + 10 * Math.abs(c.ink - g.ink); }
@@ -1552,18 +1642,29 @@ var PatternEngine = (function () {
         var d = dist(c, g); if (d < rd) { rd = d; rep = k; }
       });
       rgb = rgb.map(function (v) { return Math.round(v / n); });
-      return { rgb: rgb, hex: rgbHex(rgb), ink: g.ink, count: n, paper: false, guess: DMC[nearestDmc(rgbToLab(rgb))].code, sample: { x: rep % cols, y: Math.floor(rep / cols) } };
+      var rc = s[rep].cell;
+      return { rgb: rgb, hex: rgbHex(rgb), ink: g.ink, count: n, paper: false, guess: DMC[nearestDmc(rgbToLab(rgb))].code, sample: { x: rc % cols, y: Math.floor(rc / cols) } };
     });
     var order = out.map(function (g, i) { return i; }).sort(function (a, b) { return out[b].count - out[a].count; });
     var rank = []; order.forEach(function (gi, r) { rank[gi] = r; });
     var groupsOut = order.map(function (gi) { return out[gi]; });
     var paperCells = assign.filter(function (a) { return a < 0; }).length;
-    var cells = assign.map(function (a) { return a < 0 ? groupsOut.length : rank[a]; });
+    var itemGroup = assign.map(function (a) { return a < 0 ? groupsOut.length : rank[a]; });
     if (paperCells) {
-      var pk = assign.indexOf(-1);
-      groupsOut.push({ rgb: s[pk].rgb.map(Math.round), hex: rgbHex(s[pk].rgb.map(Math.round)), ink: 0, count: paperCells, paper: true, guess: null, sample: { x: pk % cols, y: Math.floor(pk / cols) } });
+      var pk = assign.indexOf(-1), pc = s[pk].cell;
+      groupsOut.push({ rgb: s[pk].rgb.map(Math.round), hex: rgbHex(s[pk].rgb.map(Math.round)), ink: 0, count: paperCells, paper: true, guess: null, sample: { x: pc % cols, y: Math.floor(pc / cols) } });
     }
-    return { cols: cols, rows: rows, cells: cells, groups: groupsOut, grid: grid };
+    // Back to cells: a Split Cell keeps its first triangle's group in `cells` and both in `splits`.
+    var cells = new Array(cellsSample.length), splits = [], halves = {};
+    s.forEach(function (it, k) {
+      if (it.side == null) { cells[it.cell] = itemGroup[k]; return; }
+      (halves[it.cell] = halves[it.cell] || [])[it.side] = itemGroup[k];
+    });
+    Object.keys(halves).forEach(function (c) {
+      var h = halves[c]; cells[c] = h[0];
+      if (h[0] !== h[1]) splits.push({ x: c % cols, y: Math.floor(c / cols), diagonal: cellsSample[c].split, a: h[0], b: h[1] });
+    });
+    return { cols: cols, rows: rows, cells: cells, splits: splits, groups: groupsOut, grid: grid };
   }
   // The custom Blank that holds a cols × rows chart cell for cell at a Fabric Count.
   function chartBlank(cols, rows, count, finish) {
@@ -1574,7 +1675,14 @@ var PatternEngine = (function () {
     var read = opts.read, idx = opts.flosses.map(function (code) { return code == null ? -1 : flossIndex(code); });
     var p = createBlankPattern({ blank: chartBlank(read.cols, read.rows, opts.count || 14, opts.finish), palette: [] });
     p.cells = read.cells.map(function (g) { return idx[g] == null ? -1 : idx[g]; });
-    p.palette = orderPalette(p.cells);
+    var used = [];
+    (read.splits || []).forEach(function (t) {
+      var a = idx[t.a] == null ? -1 : idx[t.a], b = idx[t.b] == null ? -1 : idx[t.b];
+      putSplit(p.cells, p.splits, t.y * read.cols + t.x, t.diagonal, a, b);
+      used.push(a, b);
+    });
+    p.extraStitches = Object.keys(p.splits).length > 0;
+    p.palette = orderPalette(p.cells, used.filter(function (f) { return f >= 0; }).filter(function (f, i, arr) { return arr.indexOf(f) === i; }));
     if (p.overcast) p.overcast = defaultOvercast(p.blank, p.cols, p.palette);
     return p;
   }
@@ -1611,6 +1719,13 @@ var PatternEngine = (function () {
     return out;
   }
   function floss(code) { var f = DMC_BY_CODE[code]; return f ? { code: f.code, name: f.name, hex: f.hex } : null; }
+  // The two triangles of a Split Cell as corner points in cell units (y down), a first.
+  function splitTriangles(diagonal) {
+    return diagonal === '/' ? { a: [[0, 0], [1, 0], [0, 1]], b: [[1, 0], [1, 1], [0, 1]] }
+      : { a: [[0, 0], [1, 0], [1, 1]], b: [[0, 0], [1, 1], [0, 1]] };
+  }
+  // Which triangle of a Split Cell the point (fx, fy) inside the cell (0..1) falls in.
+  function splitSide(diagonal, fx, fy) { return diagonal === '/' ? (fx + fy < 1 ? 'a' : 'b') : (fx > fy ? 'a' : 'b'); }
   function blankLabel(blank) {
     if (blank.shape === 'preset') return presetById(blank.presetId).label;
     if (blank.shape === 'custom') return 'Custom ' + formatNumber(blank.wIn) + '×' + formatNumber(blank.hIn) + '"';
@@ -1629,9 +1744,14 @@ var PatternEngine = (function () {
       var f = cells[y * p.cols + x];
       if (f >= 0) out.cells.push({ x: x - x0, y: y - y0, symbol: symbolOf[f], hex: DMC[f].hex, code: DMC[f].code });
     }
-    var counts = {};
+    var counts = {}, parts = {}, splits = effectiveSplits(p);
     cells.forEach(function (f) { if (f >= 0) counts[f] = (counts[f] || 0) + 1; });
-    out.legend = pal.map(function (f) { var o = flossOut(f); o.symbol = symbolOf[f]; o.count = counts[f] || 0; return o; });
+    function half(f) { if (f < 0) return null; parts[f] = (parts[f] || 0) + 1; return { symbol: symbolOf[f], hex: DMC[f].hex, code: DMC[f].code }; }
+    out.splits = Object.keys(splits).map(function (c) {
+      var t = splits[c], sx = c % p.cols, sy = (c - sx) / p.cols;
+      return { x: sx - x0, y: sy - y0, diagonal: t.diagonal, a: half(t.a), b: half(t.b) };
+    });
+    out.legend = pal.map(function (f) { var o = flossOut(f); o.symbol = symbolOf[f]; o.count = counts[f] || 0; o.parts = parts[f] || 0; return o; });
     var next = pal.length;
     out.edgeLegend = edgeLegend(p).map(function (e) {
       var i = flossIndex(e.code);
@@ -1665,7 +1785,7 @@ var PatternEngine = (function () {
     var blank = opts.blank, g = blankGrid(blank), pal = (opts.palette || []).map(flossIndex);
     return {
       v: 1, blank: blank, cols: g.cols, rows: g.rows, colorCount: opts.colorCount || 6, confetti: 0,
-      cells: new Array(g.cols * g.rows).fill(-1), palette: pal,
+      cells: new Array(g.cols * g.rows).fill(-1), splits: {}, palette: pal, extraStitches: false,
       overcast: isOvercast(blank) ? (opts.overcast ? JSON.parse(JSON.stringify(opts.overcast)) : defaultOvercast(blank, g.cols, pal)) : null,
       edits: [], past: [], future: []
     };
@@ -1679,19 +1799,37 @@ var PatternEngine = (function () {
       var nx = x + ox, ny = y + oy;
       if (nx < 0 || ny < 0 || nx >= next.cols || ny >= next.rows) continue;
       var c = ny * next.cols + nx;
-      if (inside[c]) next.cells[c] = p.cells[y * p.cols + x];
+      if (!inside[c]) continue;
+      next.cells[c] = p.cells[y * p.cols + x];
+      if (p.splits && p.splits[y * p.cols + x]) next.splits[c] = p.splits[y * p.cols + x];
     }
     next.palette = p.palette.slice();
+    next.extraStitches = !!p.extraStitches;
     next.confetti = p.confetti;
     return next;
   }
 
   function flossOut(i) { var f = DMC[i]; return { code: f.code, name: f.name, hex: f.hex }; }
   function cellAt(p, x, y) { var f = effectiveCells(p)[y * p.cols + x]; return f >= 0 ? flossOut(f) : null; }
+  // A Split Cell's diagonal and triangles (each a Floss, or null for Unstitched), or null for any other cell.
+  function splitAt(p, x, y) {
+    var t = effectiveSplits(p)[y * p.cols + x];
+    return t ? { diagonal: t.diagonal, a: t.a >= 0 ? flossOut(t.a) : null, b: t.b >= 0 ? flossOut(t.b) : null } : null;
+  }
+  // Every Split Cell as stitched: [{ x, y, diagonal, a, b }] with Floss codes or null.
+  function splitList(p) {
+    var s = effectiveSplits(p);
+    return Object.keys(s).map(function (c) {
+      var t = s[c], x = c % p.cols;
+      return { x: x, y: (c - x) / p.cols, diagonal: t.diagonal, a: t.a >= 0 ? DMC[t.a].code : null, b: t.b >= 0 ? DMC[t.b].code : null };
+    });
+  }
+  // Each Palette Floss with its full Stitches (count) and Split Cell triangles (parts).
   function palette(p) {
-    var counts = {};
+    var counts = {}, parts = {}, s = effectiveSplits(p);
     effectiveCells(p).forEach(function (f) { if (f >= 0) counts[f] = (counts[f] || 0) + 1; });
-    return p.palette.map(function (i) { var o = flossOut(i); o.count = counts[i] || 0; return o; });
+    Object.keys(s).forEach(function (c) { [s[c].a, s[c].b].forEach(function (f) { if (f >= 0) parts[f] = (parts[f] || 0) + 1; }); });
+    return p.palette.map(function (i) { var o = flossOut(i); o.count = counts[i] || 0; o.parts = parts[i] || 0; return o; });
   }
 
   return {
@@ -1705,7 +1843,8 @@ var PatternEngine = (function () {
     createBlankPattern: createBlankPattern, reshape: reshape, rebase: rebase,
     readChart: readChart, estimateGridCounts: estimateGridCounts, fitChartGrid: fitChartGrid, gridPoint: gridPoint, cornerGrid: cornerGrid, guessChartCorners: guessChartCorners,
     createImportedPattern: createImportedPattern, chartBlank: chartBlank,
-    blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette
+    blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette,
+    splitAt: splitAt, splitList: splitList, withExtraStitches: withExtraStitches, splitTriangles: splitTriangles, splitSide: splitSide
   };
 })();
 </script>
@@ -1755,10 +1894,20 @@ var ChartPdf = (function () {
     function X(cx) { return gx + cx * cs; }
     function Y(cy) { return gy + gh - cy * cs; } // top edge of row cy
 
+    function poly(pts, op) { ops.push(pts.map(function (q, k) { return pdfNum(q[0]) + ' ' + pdfNum(q[1]) + (k ? ' l' : ' m'); }).join(' ') + ' h ' + op); }
+    // Split Cells: each triangle as corner points on the page, with its centre for the Symbol.
+    var splits = (chart.splits || []).map(function (t) {
+      var tri = PatternEngine.splitTriangles(t.diagonal);
+      return { t: t, sides: ['a', 'b'].filter(function (k) { return t[k]; }).map(function (k) {
+        var pts = tri[k].map(function (q) { return [X(t.x + q[0]), Y(t.y + q[1])]; });
+        return { f: t[k], pts: pts, cx: (pts[0][0] + pts[1][0] + pts[2][0]) / 3, cy: (pts[0][1] + pts[1][1] + pts[2][1]) / 3 };
+      }) };
+    });
     // Cells
     chart.cells.forEach(function (c) {
       if (!bw) { fill(c.hex); rect(X(c.x), Y(c.y + 1), cs, cs, 'f'); }
     });
+    if (!bw) splits.forEach(function (s) { s.sides.forEach(function (h) { fill(h.f.hex); poly(h.pts, 'f'); }); });
     // Ring Holes
     chart.holes.forEach(function (c) { fill('#34193A'); rect(X(c.x), Y(c.y + 1), cs, cs, 'f'); });
     // Grid
@@ -1777,6 +1926,17 @@ var ChartPdf = (function () {
     chart.cells.forEach(function (c) {
       fill(bw ? '#000000' : (luminance(c.hex) < 0.45 ? '#FFFFFF' : '#000000'));
       text('F2', fs, X(c.x) + (cs - fs * 0.62) / 2, Y(c.y + 1) + (cs - fs * 0.7) / 2, c.symbol);
+    });
+    // Split Cells: the diagonal, and a smaller Symbol in each stitched triangle
+    var fs2 = fs * 0.62;
+    splits.forEach(function (s) {
+      var t = s.t;
+      ops.push('0.6 w'); stroke('#34193A');
+      if (t.diagonal === '/') line(X(t.x), Y(t.y + 1), X(t.x + 1), Y(t.y)); else line(X(t.x), Y(t.y), X(t.x + 1), Y(t.y + 1));
+      s.sides.forEach(function (h) {
+        fill(bw ? '#000000' : (luminance(h.f.hex) < 0.45 ? '#FFFFFF' : '#000000'));
+        text('F2', fs2, h.cx - fs2 * 0.31, h.cy - fs2 * 0.35, h.f.symbol);
+      });
     });
     // Outline / Edge Stitches
     function seg(o) { var u = PatternEngine.sideSegment(o.x, o.y, o.side); return [X(u[0]), Y(u[1]), X(u[2]), Y(u[3])]; }
@@ -1820,7 +1980,7 @@ var ChartPdf = (function () {
       text('F2', 8, x + 6, y + 0.5, e.edge ? (bw && chart.edgeLegend.length > 1 ? r.symbol : '') : r.symbol);
       fill('#34193A');
       text('F2', 9, x + 24, y, r.code);
-      text('F1', 9, x + 58, y, r.name + '  (' + r.count + (e.edge ? ' edge stitches)' : ' stitches)'));
+      text('F1', 9, x + 58, y, r.name + '  (' + r.count + (e.edge ? ' edge stitches)' : ' stitches' + (r.parts ? ', ' + r.parts + ' split halves' : '') + ')'));
     });
     fill('#7A6380');
     text('F1', 6.5, M, M - 14, 'Color data: craft-color-codes by MakeBead (makebead.com), CC BY 4.0. Made with StitchMaker.');
@@ -1865,7 +2025,7 @@ var ChartPdf = (function () {
     blank: { shape: 'preset', presetId: 'round-2', count: 14, finish: 'framed' },
     photo: null, masked: null, mask: null, maskPast: [], maskFuture: [], maskOverlay: null,
     frame: null, colorCount: 6, confetti: 1, pattern: null,
-    tab: 'photo', tool: 'pencil', edgeTool: 'ring', bgTool: 'wand', tolerance: 20, brush: 24,
+    tab: 'photo', tool: 'pencil', splitDiag: '/', edgeTool: 'ring', bgTool: 'wand', tolerance: 20, brush: 24,
     floss: null, selected: null, showPhoto: false, bw: false,
     source: null, // an imported Source Chart: { page, straight (canvases), corners, cols, rows, flosses }
     view: { zoom: 1, panX: 0, panY: 0 }, bgView: { zoom: 1, panX: 0, panY: 0 }, full: false
@@ -2008,6 +2168,7 @@ var ChartPdf = (function () {
       overcast: E.isOvercast(app.blank) && prev ? prev : undefined
     });
     app.pattern = old && old.edits && old.edits.length ? E.rebase(old, base) : base;
+    if (old && old.extraStitches) app.pattern = E.withExtraStitches(app.pattern, true);
     if (old && (old.cols !== base.cols || old.rows !== base.rows) && old.edits.some(function (c) { return c.type === 'paint' || c.type === 'erase'; }))
       toast('Color edits kept. Hand-placed stitches stay with the old size.');
     if (app.selected && !E.palette(app.pattern).some(function (f) { return f.code === app.selected; })) app.selected = null;
@@ -2169,6 +2330,27 @@ var ChartPdf = (function () {
         sctx.beginPath(); sctx.moveTo(X0 + cs - inset, Y0 + inset); sctx.lineTo(X0 + inset, Y0 + cs - inset); sctx.stroke();
       } else { sctx.fillStyle = fl.hex; sctx.fillRect(X0, Y0, cs + 0.5, cs + 0.5); }
     }
+    // Split Cells: each stitched triangle filled in its Floss, with the diagonal drawn between.
+    if (!comparingChart()) E.splitList(p).forEach(function (t) {
+      var X1 = G.toX(t.x), Y1 = G.toY(t.y), tri = E.splitTriangles(t.diagonal), pad = crosses ? cs * 0.08 : 0;
+      ['a', 'b'].forEach(function (side) {
+        var code = t[side]; if (!code) return;
+        var pts = tri[side], cx = (pts[0][0] + pts[1][0] + pts[2][0]) / 3, cy = (pts[0][1] + pts[1][1] + pts[2][1]) / 3;
+        sctx.globalAlpha = sel && code !== sel ? 0.18 : 1;
+        sctx.fillStyle = dmc(code).hex; sctx.beginPath();
+        pts.forEach(function (q, k) { // pulled slightly toward the middle so neighbours read as separate stitches
+          var px = X1 + (q[0] + (cx - q[0]) * pad / cs * 2) * cs, py = Y1 + (q[1] + (cy - q[1]) * pad / cs * 2) * cs;
+          if (k) sctx.lineTo(px, py); else sctx.moveTo(px, py);
+        });
+        sctx.closePath(); sctx.fill();
+      });
+      sctx.globalAlpha = 1;
+      if (crosses) {
+        sctx.strokeStyle = 'rgba(74,29,94,0.45)'; sctx.lineWidth = 1; sctx.beginPath();
+        if (t.diagonal === '/') { sctx.moveTo(X1, Y1 + cs); sctx.lineTo(X1 + cs, Y1); } else { sctx.moveTo(X1, Y1); sctx.lineTo(X1 + cs, Y1 + cs); }
+        sctx.stroke(); sctx.lineWidth = Math.max(1, cs * 0.26);
+      }
+    });
     sctx.globalAlpha = 1;
     // Grid, bold every 10 counted from where the Chart starts.
     if (cs >= 5) {
@@ -2200,7 +2382,7 @@ var ChartPdf = (function () {
     } else {
       sctx.lineWidth = 2; sctx.strokeStyle = '#6B3482'; sctx.lineCap = 'square'; sctx.stroke(outlinePath(G));
     }
-    var hints = { edit: { pencil: 'Tap or drag to stitch', eraser: 'Tap or drag to unstitch', eyedropper: 'Tap a Stitch to pick its color', move: 'Drag to move, pinch to zoom' },
+    var hints = { edit: { pencil: 'Tap or drag to stitch', eraser: 'Tap or drag to unstitch', eyedropper: 'Tap a Stitch to pick its color', move: 'Drag to move, pinch to zoom', split: 'Tap half a square to stitch it; tap again to clear' },
       edge: { ring: 'Tap where the Ring Hole goes', edgepaint: 'Tap edge stitches to paint them' } };
     setHint(app.tab === 'edit' ? hints.edit[app.tool] : app.tab === 'edge' && L ? hints.edge[app.edgeTool] : '');
   }
@@ -2232,7 +2414,7 @@ var ChartPdf = (function () {
     var m = viewMode();
     if (app.tab === 'photo') return app.photo ? 'frame' : 'pan';
     if (m === 'bg') return app.bgTool === 'wand' ? 'tap' : 'draw';
-    if (app.tab === 'edit' && m === 'pattern') return app.tool === 'move' ? 'pan' : app.tool === 'eyedropper' ? 'tap' : 'draw';
+    if (app.tab === 'edit' && m === 'pattern') return app.tool === 'move' ? 'pan' : app.tool === 'eyedropper' || app.tool === 'split' ? 'tap' : 'draw';
     if (app.tab === 'edge' && m === 'pattern' && app.pattern && E.overcastLayout(app.pattern)) return app.edgeTool === 'ring' ? 'tap' : 'draw';
     return 'pan';
   }
@@ -2355,8 +2537,12 @@ var ChartPdf = (function () {
       var wandRegion = E.magicWand(app.photoData, px, py, app.tolerance);
       for (var i = 0; i < wandRegion.length; i++) if (wandRegion[i]) app.mask[i] = 1;
       maskChanged();
+    } else if (app.tab === 'edit' && app.tool === 'split') {
+      splitTap(x, y);
     } else if (app.tab === 'edit') {
       var c = cellUnder(x, y), hit = inGrid(c) && E.cellAt(app.pattern, c[0], c[1]);
+      var sp = inGrid(c) && !hit && E.splitAt(app.pattern, c[0], c[1]);
+      if (sp) { var Gt = geometry(); hit = sp[E.splitSide(sp.diagonal, Gt.cellX(x) - c[0], Gt.cellY(y) - c[1])]; }
       if (hit) { app.floss = hit.code; setTool('pencil'); toast('Picked ' + hit.code + ' ' + hit.name); }
     } else if (app.tab === 'edge') {
       var G = geometry();
@@ -2364,6 +2550,20 @@ var ChartPdf = (function () {
     }
   }
   function cellUnder(x, y) { var G = geometry(); return [Math.floor(G.cellX(x)), Math.floor(G.cellY(y))]; }
+  // The Split tool: the tapped triangle takes the current Floss, or clears if it already has it. A full Stitch
+  // keeps its Floss in the other triangle; a split along the other diagonal is re-cut along the chosen one.
+  function splitTap(x, y) {
+    var G = geometry(), gx = G.cellX(x), gy = G.cellY(y), c = [Math.floor(gx), Math.floor(gy)];
+    if (!inGrid(c)) return;
+    var p = app.pattern, d = app.splitDiag, side = E.splitSide(d, gx - c[0], gy - c[1]);
+    var sp = E.splitAt(p, c[0], c[1]), full = E.cellAt(p, c[0], c[1]), t = { a: null, b: null };
+    if (sp && sp.diagonal === d) { t.a = sp.a && sp.a.code; t.b = sp.b && sp.b.code; }
+    else if (sp) { t.a = t.b = (sp.a || sp.b).code; }
+    else if (full) { t.a = t.b = full.code; }
+    var f = app.floss || DEFAULT_FLOSS;
+    t[side] = t[side] === f ? null : f;
+    edit({ type: 'split', cells: [c], diagonal: d, a: t.a, b: t.b });
+  }
   function inGrid(c) { return c[0] >= 0 && c[1] >= 0 && c[0] < app.pattern.cols && c[1] < app.pattern.rows; }
   function addStroke(c) {
     if (!inGrid(c)) return;
@@ -2491,18 +2691,24 @@ var ChartPdf = (function () {
     var symOf = {}; if (chart) chart.legend.forEach(function (r) { symOf[r.code] = r.symbol; });
     $('#flossList').innerHTML = pal.map(function (f) {
       return '<button class="floss" data-floss="' + f.code + '" aria-pressed="' + (app.selected === f.code) + '"><span class="swatch" style="background:' + f.hex + ';color:' + (lum(f.hex) < 0.45 ? '#fff' : '#4A1D5E') + '">' + (symOf[f.code] || '') + '</span>' +
-        '<span><span class="code">DMC ' + f.code + '</span><br><span class="nm">' + f.name + '</span></span><span class="ct">' + f.count + '</span></button>';
+        '<span><span class="code">DMC ' + f.code + '</span><br><span class="nm">' + f.name + '</span></span><span class="ct">' + f.count + (f.parts ? ' + ' + f.parts + ' split' : '') + '</span></button>';
     }).join('') || '<p class="muted">Choose a photo to see its colors.</p>';
     $('#flossActions').hidden = !app.selected;
     // Edit
+    var extra = !!(p && p.extraStitches);
+    if (!extra && app.tool === 'split') app.tool = 'pencil';
+    $('#toolSplit').hidden = !extra;
     pressed($('#tool'), 'data-tool', app.tool);
+    $('#splitRow').hidden = app.tool !== 'split';
+    pressed($('#splitDiag'), 'data-diag', app.splitDiag);
+    pressed($('#extraStitches'), 'data-extra', extra ? 1 : 0);
     $('#strip').innerHTML = stripHtml(pal);
     // Edge
     var L = p && E.overcastLayout(p);
     $('[data-tab=edge]').hidden = !over;
     if (over && app.tab === 'edge') renderEdgePane(p, L, pal);
     // Chart
-    if (chart) $('#chartSummary').textContent = chart.legend.length + ' colors, ' + chart.cells.length + ' stitches' + (chart.edges.length ? ', ' + chart.edges.length + ' edge stitches' : '') + '. ' + chart.header.size + '.';
+    if (chart) $('#chartSummary').textContent = chart.legend.length + ' colors, ' + chart.cells.length + ' stitches' + (chart.splits.length ? ', ' + chart.splits.length + ' split squares' : '') + (chart.edges.length ? ', ' + chart.edges.length + ' edge stitches' : '') + '. ' + chart.header.size + '.';
     pressed($('#bw'), 'data-bw', app.bw ? 1 : 0);
     // History
     $('#undo').disabled = !(p && E.canUndo(p));
@@ -3012,7 +3218,14 @@ var ChartPdf = (function () {
     if (t.dataset.floss) { app.selected = app.selected === t.dataset.floss ? null : t.dataset.floss; if (app.selected) app.floss = app.selected; renderPanels(); render(); return; }
     if (t.dataset.tool && t.closest('#tool')) { setTool(t.dataset.tool); return; }
     if (t.dataset.tool && t.closest('#edgeTool')) { app.edgeTool = t.dataset.tool; renderPanels(); render(); return; }
-    if (t.dataset.pick) { app.floss = t.dataset.pick; if (app.tab === 'edit' && app.tool !== 'pencil') app.tool = 'pencil'; renderPanels(); return; }
+    if (t.dataset.pick) { app.floss = t.dataset.pick; if (app.tab === 'edit' && app.tool !== 'pencil' && app.tool !== 'split') app.tool = 'pencil'; renderPanels(); return; }
+    if (t.dataset.diag) { app.splitDiag = t.dataset.diag; renderPanels(); return; }
+    if (t.dataset.extra) {
+      if (!app.pattern) return;
+      app.pattern = E.withExtraStitches(app.pattern, t.dataset.extra === '1');
+      if (app.pattern.extraStitches) app.tool = 'split';
+      changed(); return;
+    }
     if (t.dataset.ring) { edit({ type: 'ring', mode: t.dataset.ring }); return; }
     if (t.dataset.size) { edit({ type: 'ring', size: +t.dataset.size }); return; }
     if (t.dataset.edge) { edit({ type: 'edgeMode', mode: t.dataset.edge }); return; }

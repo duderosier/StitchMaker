@@ -20,8 +20,13 @@ function chart(cols, rows, kind, { cell = 14, margin = 30, warp = null, lines = 
   };
   const S = cell;
   for (let v = 0; v < rows * S; v += warp ? 0.5 : 1) for (let u = 0; u < cols * S; u += warp ? 0.5 : 1) {
-    const cx = Math.floor(u / S), cy = Math.floor(v / S), k = kind(cx, cy);
-    const iu = u - cx * S, iv = v - cy * S;
+    const cx = Math.floor(u / S), cy = Math.floor(v / S), iu = u - cx * S, iv = v - cy * S;
+    let k = kind(cx, cy);
+    if (k && k.split) { // a Split Cell: two triangles, each tinted (or paper), with a thin diagonal between
+      const first = k.split === '/' ? iu + iv < S : iu > iv, onDiag = Math.abs(k.split === '/' ? iu + iv - S : iu - iv) < 0.7;
+      if (onDiag) { put(u, v, [150, 150, 150]); continue; }
+      k = first ? k.a : k.b;
+    }
     let rgb = k ? k.tint : WHITE;
     if (k && k.symbol) {
       const a = iu - S / 2, b = iv - S / 2, r = S * 0.28;
@@ -203,4 +208,37 @@ test('a straight grid from the corners alone gives each crossing for a live over
   assert.deepEqual(E.gridPoint(g, 0, 0), [10, 20]);
   assert.deepEqual(E.gridPoint(g, 10, 5), [110, 70]);
   assert.deepEqual(E.gridPoint(g, 5, 2.5).map(Math.round), [60, 45]);
+});
+
+test('diagonally split cells are read as Split Cells, one group per triangle', () => {
+  const RED = [240, 170, 170];
+  const kind = (x, y) => {
+    if (y === 2 && x === 2) return { split: '/', a: { tint: YELLOW, symbol: null }, b: null };
+    if (y === 2 && x === 5) return { split: '\\', a: { tint: BLUE, symbol: null }, b: { tint: RED, symbol: null } };
+    if (y === 5 && x === 7) return { split: '/', a: null, b: { tint: RED, symbol: null } };
+    if (y < 2) return { tint: YELLOW, symbol: 'dot' };
+    if (y >= 7) return { tint: BLUE, symbol: 'tri' };
+    if (x === 9) return { tint: RED, symbol: null };
+    return null;
+  };
+  const { image, corners } = chart(12, 10, kind, { cell: 20 });
+  const read = E.readChart(image, { corners, cols: 12, rows: 10 });
+  const at = (x, y) => read.splits.find(t => t.x === x && t.y === y);
+  assert.equal(read.splits.length, 3, JSON.stringify(read.splits.map(t => [t.x, t.y])));
+  const yellow = read.cells[0], blue = read.cells[9 * 12], red = read.cells[3 * 12 + 9], paper = read.cells[4 * 12];
+  assert.equal(read.groups[paper].paper, true);
+  assert.deepEqual([at(2, 2).diagonal, at(2, 2).a, at(2, 2).b], ['/', yellow, paper]);
+  assert.deepEqual([at(5, 2).diagonal, at(5, 2).a, at(5, 2).b], ['\\', blue, red]);
+  assert.deepEqual([at(7, 5).diagonal, at(7, 5).a, at(7, 5).b], ['/', paper, red]);
+  const p = E.createImportedPattern({ read, flosses: read.groups.map(g => (g.paper ? null : g.guess)) });
+  assert.equal(p.extraStitches, true);
+  assert.equal(E.splitList(p).length, 3);
+});
+
+test('a page with no split cells reads none, even photographed at an angle', () => {
+  const cell = 16, cols = 12, rows = 10, W = cols * cell + 60, H = rows * cell + 60;
+  const warp = (u, v) => { const s = u / (cols * cell), t = v / (rows * cell); return [30 + u + 18 * t - 10 * s * t, 30 + v + 12 * s]; };
+  const { image, corners } = chart(cols, rows, sampleKind, { cell, warp });
+  const read = E.readChart(image, { corners, cols, rows });
+  assert.equal(read.splits.length, 0);
 });

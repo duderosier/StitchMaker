@@ -4,11 +4,13 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Engine model, edits, undo, save/load (tests first)
-- [ ] Import detection
-- [ ] Split tool and "Extra stitch types" switch
-- [ ] Preview and Chart PDF drawing, legend counts
+- [x] Engine model, edits, undo, save/load (tests first)
+- [x] Import detection
+- [x] Split tool and "Extra stitch types" switch
+- [x] Preview and Chart PDF drawing, legend counts
 
 ## Comments
+
+- 2026-10-20: Done. Engine keeps Split Cells beside `cells` (`splits`, keyed by cell) with `split` edits, Palette edits, undo, save/load (older saves load with none) and reshape. A triangle-pair with one Floss settles to a full Stitch. Reading compares each cell's four quarters between its diagonals; on the user's photographed page it finds 88, which spot checks show are real ¾ stitches (curves, cells under Backstitch). Split tool: pick a diagonal, tap a triangle to give it the current Floss, tap again to clear. Preview fills triangles; the Chart draws them with a diagonal and small Symbols, and the legend lists split halves per Floss. "Extra stitch types" is on the Edit step, off by default, on for imports with Split Cells.

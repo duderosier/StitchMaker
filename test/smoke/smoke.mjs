@@ -147,6 +147,20 @@ try {
   check((await page.inputValue('#name')) === 'My drawing' && await page.isHidden('#empty'), 'hand-drawn pattern restored after reload');
   await tab(page, 'blank'); await page.click('[data-shape=custom]'); await page.click('[data-finish=overcast]'); await page.waitForTimeout(150);
   check(await page.isVisible('[data-tab=edge]'), 'a drawing can be Overcast and gets the Edge step');
+  await tab(page, 'edit');
+  check(await page.isHidden('#toolSplit'), 'the Split tool is hidden until Extra stitch types is on');
+  await page.click('[data-extra="1"]'); await page.waitForTimeout(100);
+  check(await page.getAttribute('#toolSplit', 'aria-pressed') === 'true', 'Extra stitch types on picks the Split tool');
+  const b3 = await page.locator('#stage').boundingBox();
+  await page.mouse.click(b3.x + b3.width / 2 + 3, b3.y + b3.height / 2 + 45);
+  await page.waitForTimeout(100);
+  await tab(page, 'colors');
+  const splitTxt = (await page.locator('#flossList .floss .ct').allTextContents()).join(' ');
+  check(/split/.test(splitTxt), `tapping with the Split tool makes a Split Cell (${splitTxt})`);
+  await page.waitForTimeout(900);
+  await page.reload(); await page.waitForTimeout(700);
+  await tab(page, 'edit');
+  check(await page.isVisible('#toolSplit'), 'Extra stitch types stays on after reload');
 
   // ---------- phone: importing a Source Chart ----------
   await page.setInputFiles('#chartFile', chartPng);
