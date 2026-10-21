@@ -35,7 +35,7 @@
   color-scheme: light;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
 body {
   font: 15px/1.4 var(--ui);
   color: var(--ink);
@@ -49,9 +49,10 @@ button { cursor: pointer; }
 .app {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  /* Fixed preview height: it must not resize when the page scrolls or the step changes. */
+  grid-template-rows: auto clamp(220px, 46svh, 620px) minmax(0, 1fr) auto;
   grid-template-areas: "top" "stage" "panel" "tabs";
-  height: 100dvh;
+  height: 100vh; height: 100svh;
   padding-top: env(safe-area-inset-top);
 }
 
@@ -96,6 +97,25 @@ button { cursor: pointer; }
   pointer-events: none;
 }
 .hint:empty { display: none; }
+.hint { transition: opacity .25s; }
+.hint.away { opacity: 0; }
+.stage-tools { position: absolute; right: 10px; top: 10px; display: flex; gap: 6px; }
+.stage-btn {
+  min-width: 40px; height: 40px; border: 0; border-radius: 999px; padding: 0 12px;
+  background: rgba(255, 255, 255, .92); color: var(--ink); box-shadow: 0 1px 4px rgba(92, 24, 78, .18); font-size: 14px;
+}
+.stage-btn svg { width: 20px; height: 20px; vertical-align: -4px; }
+.stage-btn[aria-pressed=true] { background: var(--needle); color: #fff; }
+.stage-btn[hidden] { display: none; }
+.readout { max-width: calc(100% - 170px); }
+.app.full .stage-wrap {
+  position: fixed; inset: 0; margin: 0; border-radius: 0; z-index: 30;
+  padding-top: env(safe-area-inset-top);
+}
+.app.full .stage-tools { top: calc(10px + env(safe-area-inset-top)); }
+.slider { position: relative; flex: 1; display: flex; min-width: 120px; }
+.slider input[type=range] { pointer-events: none; width: 100%; min-width: 0; }
+.slider-shield { position: absolute; inset: 0; touch-action: pan-y; cursor: pointer; }
 .readout {
   position: absolute; left: 10px; top: 10px;
   background: rgba(255, 255, 255, .9); border-radius: 999px; padding: 4px 10px;
@@ -114,7 +134,7 @@ button { cursor: pointer; }
 /* Panel */
 .panel {
   grid-area: panel;
-  max-height: 38dvh; overflow-y: auto; overflow-x: hidden;
+  min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
   padding: 14px 14px 8px;
 }
 .pane { display: none; }
@@ -211,7 +231,7 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
 .toast {
   position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; box-shadow: var(--shadow); font-size: 14px; z-index: 10;
-  max-width: 92vw; text-align: center;
+  max-width: 92vw; text-align: center; pointer-events: none;
 }
 .toast[hidden] { display: none; }
 .credit { font-size: 11.5px; color: var(--ink-soft); }
@@ -224,7 +244,7 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
     grid-template-areas: "top top" "stage panel" "stage tabs";
   }
   .stage-wrap { margin: 0 6px 12px 12px; }
-  .panel { max-height: none; border-left: 0; padding-top: 4px; }
+  .panel { border-left: 0; padding-top: 4px; }
   .tabs { padding-bottom: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -248,6 +268,11 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
   <section class="stage-wrap">
     <canvas id="stage" aria-label="Pattern"></canvas>
     <div class="readout" id="readout"></div>
+    <div class="stage-tools">
+      <button class="stage-btn js-compare" aria-pressed="false" hidden>Photo</button>
+      <button class="stage-btn" id="btnFit" aria-label="Show whole preview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5M8.5 11h5"/></svg></button>
+      <button class="stage-btn" id="btnFull" aria-label="Full screen"></button>
+    </div>
     <div class="hint" id="hint"></div>
     <div class="empty" id="empty">
       <h2>Start with a photo</h2>
@@ -289,7 +314,7 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
       </div>
       <div class="row"><label for="rot">Turn</label><input type="range" id="rot" min="-180" max="180" step="1" value="0"></div>
       <div class="row"><label for="zoom">Zoom</label><input type="range" id="zoom" min="0" max="100" step="1" value="0"></div>
-      <p class="muted">Drag to move the photo inside the outline. Pinch to zoom and turn.</p>
+      <p class="muted">Drag to move the photo inside the outline, and use Zoom and Turn to size it. Pinch with two fingers to look closer.</p>
     </div>
 
     <div class="pane" data-pane="background">
@@ -310,7 +335,7 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
     </div>
 
     <div class="pane" data-pane="colors">
-      <div class="row"><label for="colorCount">Colors <b id="ccVal">6</b></label><input type="range" id="colorCount" min="2" max="16" value="6"></div>
+      <div class="row"><label for="colorCount">Colors <b id="ccVal">6</b></label><input type="range" id="colorCount" min="2" max="20" value="6"></div>
       <div class="row"><span class="field-label">Clean up specks</span>
         <div class="seg" id="confetti">
           <button data-confetti="0">Off</button><button data-confetti="1" aria-pressed="true">Light</button>
@@ -318,7 +343,7 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
         </div>
       </div>
       <div class="actions">
-        <button class="secondary" id="showPhoto" aria-pressed="false">Compare with photo</button>
+        <button class="secondary js-compare" aria-pressed="false">Show original photo</button>
       </div>
       <div class="floss-list" id="flossList"></div>
       <div class="actions" id="flossActions" hidden>
@@ -336,8 +361,11 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
         <button data-tool="move">Move</button>
       </div>
       <div class="strip" id="strip"></div>
+      <div class="actions">
+        <button class="secondary js-compare" aria-pressed="false">Show original photo</button>
+        <button class="secondary" data-act="reset-view">Show whole pattern</button>
+      </div>
       <p class="muted">Use two fingers to zoom and move the grid.</p>
-      <div class="actions"><button class="secondary" data-act="reset-view">Show whole pattern</button></div>
     </div>
 
     <div class="pane" data-pane="edge">
@@ -1209,7 +1237,7 @@ var ChartPdf = (function () {
     frame: null, colorCount: 6, confetti: 1, pattern: null,
     tab: 'photo', tool: 'pencil', edgeTool: 'ring', bgTool: 'wand', tolerance: 20, brush: 24,
     floss: null, selected: null, showPhoto: false, bw: false,
-    view: { zoom: 1, panX: 0, panY: 0 }
+    view: { zoom: 1, panX: 0, panY: 0 }, bgView: { zoom: 1, panX: 0, panY: 0 }, full: false
   };
 
   // ---------- photo ----------
@@ -1225,6 +1253,7 @@ var ChartPdf = (function () {
       app.name = (file.name || 'Untitled keychain').replace(/\.[^.]+$/, '').slice(0, 40) || 'Untitled keychain';
       $('#name').value = app.name;
       app.id = null;
+      app.view = { zoom: 1, panX: 0, panY: 0 }; app.bgView = { zoom: 1, panX: 0, panY: 0 };
       fitFrame();
       app.pattern = null;
       rebuild(true);
@@ -1331,13 +1360,12 @@ var ChartPdf = (function () {
     }
     return { x0: -1, y0: -1, w: g.cols + 2, h: g.rows + 2, gx: 0, gy: 0, L: null };
   }
-  function geometry(useView) {
-    var s = stageSize(), R = region(), pad = 14;
-    var cs = Math.min((s.w - 2 * pad) / R.w, (s.h - 2 * pad) / R.h);
-    var z = useView ? app.view.zoom : 1;
-    cs *= z;
-    var ox = s.w / 2 - (R.w * cs) / 2 + (useView ? app.view.panX : 0);
-    var oy = s.h / 2 - (R.h * cs) / 2 + (useView ? app.view.panY : 0);
+  // The Pattern, the framed photo and the compare view share one zoom/pan so they line up.
+  function geometry() {
+    var s = stageSize(), R = region(), pad = 14, v = app.view;
+    var cs = Math.min((s.w - 2 * pad) / R.w, (s.h - 2 * pad) / R.h) * v.zoom;
+    var ox = s.w / 2 - (R.w * cs) / 2 + v.panX;
+    var oy = s.h / 2 - (R.h * cs) / 2 + v.panY;
     return { cs: cs, R: R, s: s, toX: function (x) { return ox + (x - R.x0) * cs; }, toY: function (y) { return oy + (y - R.y0) * cs; },
       cellX: function (px) { return (px - ox) / cs + R.x0; }, cellY: function (py) { return (py - oy) / cs + R.y0; } };
   }
@@ -1374,24 +1402,27 @@ var ChartPdf = (function () {
     var r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
     return 'rgb(' + Math.round(r * k) + ',' + Math.round(g * k) + ',' + Math.round(b * k) + ')';
   }
+  function comparing() { return app.showPhoto && (app.tab === 'colors' || app.tab === 'edit'); }
+  function viewMode() { return app.tab === 'photo' || comparing() ? 'frame' : app.tab === 'background' ? 'bg' : 'pattern'; }
   function render() {
     var s = stageSize();
     sctx.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
     sctx.clearRect(0, 0, s.w, s.h);
     $('#empty').hidden = !!app.photo;
     if (!app.photo) { $('#readout').textContent = ''; setHint(''); return; }
-    var mode = app.tab === 'photo' || (app.showPhoto && app.tab === 'colors') ? 'frame' : app.tab === 'background' ? 'bg' : 'pattern';
+    var mode = viewMode();
+    $$('.js-compare').forEach(function (b) { b.hidden = !(app.tab === 'colors' || app.tab === 'edit') || !app.pattern; b.setAttribute('aria-pressed', String(app.showPhoto)); });
     if (mode === 'frame') renderFrame(); else if (mode === 'bg') renderBackground(); else renderPattern();
     renderReadout();
   }
   function renderFrame() {
-    var G = geometry(false), f = app.frame, g = E.blankGrid(app.blank);
+    var G = geometry(), f = app.frame, g = E.blankGrid(app.blank);
     function drawPhoto() {
       sctx.save();
       sctx.translate(G.toX(0), G.toY(0)); sctx.scale(G.cs, G.cs);
       sctx.translate(g.cols / 2, g.rows / 2); sctx.scale(1 / f.s, 1 / f.s);
       sctx.rotate(-f.rot * Math.PI / 180); sctx.translate(-f.cx, -f.cy);
-      sctx.drawImage(app.masked, 0, 0);
+      sctx.drawImage(comparing() ? app.photo : app.masked, 0, 0);
       sctx.restore();
     }
     sctx.globalAlpha = 0.3; drawPhoto(); sctx.globalAlpha = 1;
@@ -1402,11 +1433,12 @@ var ChartPdf = (function () {
     sctx.restore();
     sctx.lineWidth = 2; sctx.strokeStyle = '#7A3E9D'; sctx.lineCap = 'square';
     if (clip) sctx.stroke(outlinePath(G)); else sctx.strokeRect(G.toX(0), G.toY(0), g.cols * G.cs, g.rows * G.cs);
-    setHint(app.tab === 'photo' ? 'Drag to move, pinch to zoom and turn' : 'Showing the photo');
+    setHint(app.tab === 'photo' ? 'Drag to move the photo' : 'Showing the original photo');
   }
   function bgGeometry() {
-    var s = stageSize(), pad = 14, sc = Math.min((s.w - 2 * pad) / app.photo.width, (s.h - 2 * pad) / app.photo.height);
-    return { sc: sc, ox: (s.w - app.photo.width * sc) / 2, oy: (s.h - app.photo.height * sc) / 2 };
+    var s = stageSize(), pad = 14, v = app.bgView;
+    var sc = Math.min((s.w - 2 * pad) / app.photo.width, (s.h - 2 * pad) / app.photo.height) * v.zoom;
+    return { sc: sc, ox: (s.w - app.photo.width * sc) / 2 + v.panX, oy: (s.h - app.photo.height * sc) / 2 + v.panY };
   }
   function renderBackground() {
     var B = bgGeometry();
@@ -1418,7 +1450,7 @@ var ChartPdf = (function () {
   function renderPattern() {
     var p = app.pattern;
     if (!p) return;
-    var G = geometry(app.tab === 'edit' || app.tab === 'edge'), cs = G.cs, R = G.R, L = R.L;
+    var G = geometry(), cs = G.cs, R = G.R, L = R.L;
     var cells = E.effectiveCells(p);
     // Fabric: the Blank (or cut piece) in clean white, the rest dimmed.
     if (L) {
@@ -1497,113 +1529,160 @@ var ChartPdf = (function () {
     $('#readout').textContent = txt;
   }
   var hintEl = $('#hint');
-  function setHint(t) { hintEl.textContent = t || ''; }
+  var hintTimer = null;
+  function setHint(t) {
+    t = t || '';
+    if (t === hintEl.textContent) return;
+    hintEl.textContent = t;
+    hintEl.classList.remove('away');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(function () { hintEl.classList.add('away'); }, 2500);
+  }
 
   // ---------- gestures ----------
-  var pointers = new Map(), gesture = null;
+  // Two fingers always zoom and move the preview. One finger uses the step's tool; tap tools pan when dragged,
+  // and steps without a tool pan the preview.
+  var pointers = new Map(), gesture = null, TAP_SLOP = 8;
+  function viewFor() { return viewMode() === 'bg' ? app.bgView : app.view; }
+  function oneFingerKind() {
+    var m = viewMode();
+    if (app.tab === 'photo') return 'frame';
+    if (m === 'bg') return app.bgTool === 'wand' ? 'tap' : 'draw';
+    if (app.tab === 'edit' && m === 'pattern') return app.tool === 'move' ? 'pan' : app.tool === 'eyedropper' ? 'tap' : 'draw';
+    if (app.tab === 'edge' && m === 'pattern' && app.pattern && E.overcastLayout(app.pattern)) return app.edgeTool === 'ring' ? 'tap' : 'draw';
+    return 'pan';
+  }
   stage.addEventListener('pointerdown', function (ev) {
     if (!app.photo) return;
     stage.setPointerCapture(ev.pointerId);
     pointers.set(ev.pointerId, { x: ev.offsetX, y: ev.offsetY });
-    if (pointers.size === 2) { cancelStroke(); gesture = { kind: 'two', start: twoState() }; return; }
+    hintEl.classList.add('away');
+    if (pointers.size === 2) { cancelOne(); gesture = { kind: 'pinch', start: pinchState() }; return; }
     if (pointers.size > 2) return;
-    startOne(ev.offsetX, ev.offsetY);
+    var kind = oneFingerKind();
+    gesture = { kind: kind, x0: ev.offsetX, y0: ev.offsetY, view: Object.assign({}, viewFor()), moved: false };
+    if (kind === 'draw' || kind === 'frame') beginDraw(ev.offsetX, ev.offsetY);
   });
   stage.addEventListener('pointermove', function (ev) {
     if (!pointers.has(ev.pointerId)) return;
-    var prev = pointers.get(ev.pointerId);
-    pointers.set(ev.pointerId, { x: ev.offsetX, y: ev.offsetY });
-    if (!gesture) return;
-    if (gesture.kind === 'two' && pointers.size >= 2) moveTwo();
-    else if (gesture.kind !== 'two') moveOne(ev.offsetX, ev.offsetY, prev);
+    var prev = pointers.get(ev.pointerId), x = ev.offsetX, y = ev.offsetY;
+    pointers.set(ev.pointerId, { x: x, y: y });
+    var g = gesture;
+    if (!g) return;
+    if (g.kind === 'pinch') { if (pointers.size >= 2) movePinch(); return; }
+    var dx = x - g.x0, dy = y - g.y0;
+    if (!g.moved && Math.hypot(dx, dy) > TAP_SLOP) g.moved = true;
+    if (g.kind === 'tap' && g.moved) g.kind = 'pan';
+    if (g.kind === 'pan') { var v = viewFor(); v.panX = g.view.panX + dx; v.panY = g.view.panY + dy; render(); }
+    else if (g.kind === 'draw' || g.kind === 'frame') moveDraw(x, y, prev);
   });
-  function endPointer(ev) {
+  function endPointer(ev, cancelled) {
     if (!pointers.has(ev.pointerId)) return;
     pointers.delete(ev.pointerId);
-    if (gesture && gesture.kind === 'two') { if (pointers.size < 2) gesture = null; return; }
-    if (pointers.size === 0) endOne();
+    var g = gesture;
+    if (g && g.kind === 'pinch') { if (pointers.size === 0) gesture = null; return; }
+    if (pointers.size > 0 || !g) return;
+    if (cancelled) cancelOne();
+    else if (g.kind === 'tap' && !g.moved) doTap(g.x0, g.y0);
+    else endDraw();
+    gesture = null;
   }
-  stage.addEventListener('pointerup', endPointer);
-  stage.addEventListener('pointercancel', function (ev) { cancelStroke(); endPointer(ev); });
+  stage.addEventListener('pointerup', function (ev) { endPointer(ev, false); });
+  stage.addEventListener('pointercancel', function (ev) { endPointer(ev, true); });
+  stage.addEventListener('wheel', function (ev) {
+    if (!app.photo) return;
+    ev.preventDefault();
+    zoomView(viewFor(), Math.exp(-ev.deltaY / 300), ev.offsetX, ev.offsetY, ev.offsetX, ev.offsetY);
+    render();
+  }, { passive: false });
 
-  function twoState() {
+  function pinchState() {
     var pts = Array.from(pointers.values()), a = pts[0], b = pts[1];
-    return { mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, d: Math.hypot(b.x - a.x, b.y - a.y) || 1, ang: Math.atan2(b.y - a.y, b.x - a.x),
-      frame: app.frame && Object.assign({}, app.frame), view: Object.assign({}, app.view) };
+    return { mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, d: Math.hypot(b.x - a.x, b.y - a.y) || 1, view: Object.assign({}, viewFor()) };
   }
-  function moveTwo() {
-    var st = gesture.start, now = twoState();
-    if (app.tab === 'photo') {
-      if (!gesture.guarded) { if (!guardEdits()) { gesture = null; return; } gesture.guarded = true; }
-      var G = geometry(false), f = app.frame;
-      f.s = Math.max(st.frame.fit * 0.05, Math.min(st.frame.fit * 2, st.frame.s * st.d / now.d));
-      f.rot = st.frame.rot - (now.ang - st.ang) * 180 / Math.PI;
-      panFrame(now.mx - st.mx, now.my - st.my, st.frame, G);
-      syncPhotoInputs(); queueRebuild(); render();
-    } else if (app.tab === 'edit' || app.tab === 'edge') {
-      app.view.zoom = Math.max(1, Math.min(8, st.view.zoom * now.d / st.d));
-      app.view.panX = st.view.panX + (now.mx - st.mx); app.view.panY = st.view.panY + (now.my - st.my);
-      render();
-    }
+  function movePinch() {
+    var st = gesture.start, now = pinchState(), v = viewFor();
+    Object.assign(v, st.view);
+    zoomView(v, now.d / st.d, st.mx, st.my, now.mx, now.my);
+    render();
   }
+  // Zoom a view by `k` so the content under (m0x, m0y) ends up under (m1x, m1y).
+  function zoomView(v, k, m0x, m0y, m1x, m1y) {
+    var s = stageSize(), cx = s.w / 2, cy = s.h / 2, max = v === app.bgView ? 10 : 24;
+    var z0 = v.zoom, z1 = Math.max(1, Math.min(max, z0 * k));
+    v.panX = m1x - cx - (m0x - cx - v.panX) * z1 / z0;
+    v.panY = m1y - cy - (m0y - cy - v.panY) * z1 / z0;
+    v.zoom = z1;
+    if (z1 === 1 && k < 1) { v.panX = 0; v.panY = 0; }
+  }
+
   function panFrame(dx, dy, base, G) {
     var r = base.rot * Math.PI / 180, gx = dx / G.cs, gy = dy / G.cs;
     var px = (Math.cos(r) * gx - Math.sin(r) * gy) * app.frame.s, py = (Math.sin(r) * gx + Math.cos(r) * gy) * app.frame.s;
     app.frame.cx = base.cx - px; app.frame.cy = base.cy - py;
   }
-  function startOne(x, y) {
-    if (app.tab === 'photo') {
-      if (!guardEdits()) return;
-      gesture = { kind: 'pan', x: x, y: y, frame: Object.assign({}, app.frame) };
-    } else if (app.tab === 'background') {
-      var B = bgGeometry(), px = (x - B.ox) / B.sc, py = (y - B.oy) / B.sc;
-      var onPhoto = px >= 0 && py >= 0 && px < app.photo.width && py < app.photo.height;
-      if (app.bgTool === 'wand' && !onPhoto) return; // brushes may start just off the photo
-      if (!guardEdits()) return;
-      pushMask();
-      if (app.bgTool === 'wand') {
-        var region2 = E.magicWand(app.photoData, px, py, app.tolerance);
-        for (var i = 0; i < region2.length; i++) if (region2[i]) app.mask[i] = 1;
-        maskChanged();
-      } else { gesture = { kind: 'brush' }; brushAt(px, py); }
-    } else if (app.tab === 'edit' && app.pattern) {
-      if (app.tool === 'move') { gesture = { kind: 'view', x: x, y: y, view: Object.assign({}, app.view) }; return; }
+  function beginDraw(x, y) {
+    var g = gesture;
+    if (g.kind === 'frame') {
+      if (!guardEdits()) { gesture = null; return; }
+      g.frame = Object.assign({}, app.frame);
+    } else if (viewMode() === 'bg') {
+      if (!guardEdits()) { gesture = null; return; }
+      pushMask(); g.sub = 'brush';
+      var B = bgGeometry(); brushAt((x - B.ox) / B.sc, (y - B.oy) / B.sc);
+    } else if (app.tab === 'edit') {
       var c = cellUnder(x, y);
-      if (app.tool === 'eyedropper') {
-        var hit = E.cellAt(app.pattern, c[0], c[1]);
-        if (hit && inGrid(c)) { app.floss = hit.code; setTool('pencil'); toast('Picked ' + hit.code + ' ' + hit.name); }
-        return;
-      }
-      gesture = { kind: 'stroke', base: app.pattern, cells: [], last: c };
+      g.sub = 'stroke'; g.base = app.pattern; g.cells = []; g.last = c;
       addStroke(c);
-    } else if (app.tab === 'edge' && app.pattern && E.overcastLayout(app.pattern)) {
-      var G = geometry(true), dx = G.cellX(x), dy = G.cellY(y);
-      if (app.edgeTool === 'ring') { edit({ type: 'ring', x: dx, y: dy, mode: app.pattern.overcast.ring.mode === 'none' ? 'outside' : app.pattern.overcast.ring.mode }); return; }
-      gesture = { kind: 'edge', base: app.pattern, segs: [] };
+    } else if (app.tab === 'edge') {
+      g.sub = 'edge'; g.base = app.pattern; g.segs = [];
       addEdge(x, y);
     }
   }
-  function moveOne(x, y, prev) {
-    if (gesture.kind === 'pan') { panFrame(x - gesture.x, y - gesture.y, gesture.frame, geometry(false)); syncPhotoInputs(); queueRebuild(); render(); }
-    else if (gesture.kind === 'brush') { var B = bgGeometry(); brushAt((x - B.ox) / B.sc, (y - B.oy) / B.sc, (prev.x - B.ox) / B.sc, (prev.y - B.oy) / B.sc); }
-    else if (gesture.kind === 'view') { app.view.panX = gesture.view.panX + x - gesture.x; app.view.panY = gesture.view.panY + y - gesture.y; render(); }
-    else if (gesture.kind === 'stroke') {
-      var c = cellUnder(x, y), a = gesture.last, n = Math.max(Math.abs(c[0] - a[0]), Math.abs(c[1] - a[1]));
+  function moveDraw(x, y, prev) {
+    var g = gesture;
+    if (g.kind === 'frame') { panFrame(x - g.x0, y - g.y0, g.frame, geometry()); syncPhotoInputs(); queueRebuild(); render(); }
+    else if (g.sub === 'brush') { var B = bgGeometry(); brushAt((x - B.ox) / B.sc, (y - B.oy) / B.sc, (prev.x - B.ox) / B.sc, (prev.y - B.oy) / B.sc); }
+    else if (g.sub === 'stroke') {
+      var c = cellUnder(x, y), a = g.last, n = Math.max(Math.abs(c[0] - a[0]), Math.abs(c[1] - a[1]));
       for (var k = 1; k <= n; k++) addStroke([Math.round(a[0] + (c[0] - a[0]) * k / n), Math.round(a[1] + (c[1] - a[1]) * k / n)]);
-      gesture.last = c;
-    } else if (gesture.kind === 'edge') addEdge(x, y);
+      g.last = c;
+    } else if (g.sub === 'edge') addEdge(x, y);
   }
-  function endOne() {
-    if (!gesture) return;
-    if (gesture.kind === 'brush') maskChanged();
-    if (gesture.kind === 'stroke' || gesture.kind === 'edge') changed();
+  function endDraw() {
+    var g = gesture;
+    if (!g) return;
+    if (g.sub === 'brush') maskChanged();
+    else if (g.sub === 'stroke' || g.sub === 'edge') changed();
+    else if (g.kind === 'frame' && g.moved) scheduleSave();
+  }
+  // A second finger landed mid-stroke: undo what the first finger did and switch to zooming.
+  function cancelOne() {
+    var g = gesture;
+    if (!g) return;
+    if (g.sub === 'stroke' || g.sub === 'edge') { app.pattern = g.base; render(); }
+    else if (g.sub === 'brush' && app.maskPast.length) { app.mask = app.maskPast.pop(); refreshMasked(); render(); }
+    else if (g.kind === 'frame' && g.frame) { app.frame = g.frame; syncPhotoInputs(); queueRebuild(); }
     gesture = null;
   }
-  function cancelStroke() {
-    if (gesture && (gesture.kind === 'stroke' || gesture.kind === 'edge')) { app.pattern = gesture.base; render(); }
-    gesture = null;
+  function doTap(x, y) {
+    if (viewMode() === 'bg') {
+      var B = bgGeometry(), px = (x - B.ox) / B.sc, py = (y - B.oy) / B.sc;
+      if (px < 0 || py < 0 || px >= app.photo.width || py >= app.photo.height) return;
+      if (!guardEdits()) return;
+      pushMask();
+      var region2 = E.magicWand(app.photoData, px, py, app.tolerance);
+      for (var i = 0; i < region2.length; i++) if (region2[i]) app.mask[i] = 1;
+      maskChanged();
+    } else if (app.tab === 'edit') {
+      var c = cellUnder(x, y), hit = inGrid(c) && E.cellAt(app.pattern, c[0], c[1]);
+      if (hit) { app.floss = hit.code; setTool('pencil'); toast('Picked ' + hit.code + ' ' + hit.name); }
+    } else if (app.tab === 'edge') {
+      var G = geometry();
+      edit({ type: 'ring', x: G.cellX(x), y: G.cellY(y), mode: app.pattern.overcast.ring.mode === 'none' ? 'outside' : app.pattern.overcast.ring.mode });
+    }
   }
-  function cellUnder(x, y) { var G = geometry(true); return [Math.floor(G.cellX(x)), Math.floor(G.cellY(y))]; }
+  function cellUnder(x, y) { var G = geometry(); return [Math.floor(G.cellX(x)), Math.floor(G.cellY(y))]; }
   function inGrid(c) { return c[0] >= 0 && c[1] >= 0 && c[0] < app.pattern.cols && c[1] < app.pattern.rows; }
   function addStroke(c) {
     if (!inGrid(c)) return;
@@ -1613,7 +1692,7 @@ var ChartPdf = (function () {
     render();
   }
   function addEdge(x, y) {
-    var G = geometry(true), L = E.overcastLayout(gesture.base), best = null, bd = Infinity;
+    var G = geometry(), L = E.overcastLayout(gesture.base), best = null, bd = Infinity;
     L.edges.forEach(function (e) {
       var s2 = edgeSeg(G, e.x - L.offset, e.y - L.offset, e.side);
       var d = Math.hypot((s2[0] + s2[2]) / 2 - x, (s2[1] + s2[3]) / 2 - y);
@@ -1714,7 +1793,6 @@ var ChartPdf = (function () {
     // Colors
     $('#colorCount').value = app.colorCount; $('#ccVal').textContent = app.colorCount;
     pressed($('#confetti'), 'data-confetti', app.confetti);
-    $('#showPhoto').setAttribute('aria-pressed', String(app.showPhoto));
     var pal = p ? E.palette(p) : [], chart = p ? E.chartLayout(p) : null;
     var symOf = {}; if (chart) chart.legend.forEach(function (r) { symOf[r.code] = r.symbol; });
     $('#flossList').innerHTML = pal.map(function (f) {
@@ -1770,7 +1848,7 @@ var ChartPdf = (function () {
     app.tab = t;
     $$('#tabs [data-tab]').forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.tab === t)); });
     $$('.pane').forEach(function (el) { el.classList.toggle('on', el.dataset.pane === t); });
-    if (t !== 'colors') app.showPhoto = false;
+    if (t !== 'colors' && t !== 'edit') app.showPhoto = false;
     renderPanels(); render();
   }
   function setTool(t) { app.tool = t; renderPanels(); render(); }
@@ -1880,7 +1958,7 @@ var ChartPdf = (function () {
         setPhoto(c, E.decodeMask(rec.mask, c.width * c.height));
         app.pattern = E.deserialize(rec.pattern);
         var first = E.palette(app.pattern)[0]; app.floss = first ? first.code : '310'; app.selected = null;
-        app.view = { zoom: 1, panX: 0, panY: 0 };
+        app.view = { zoom: 1, panX: 0, panY: 0 }; app.bgView = { zoom: 1, panX: 0, panY: 0 };
         try { localStorage.setItem('stitch-keychains:current', rec.id); } catch (e) { /* ignore */ }
         setTab('colors');
       });
@@ -1925,7 +2003,7 @@ var ChartPdf = (function () {
   var toastTimer = null;
   function toast(msg) {
     var el = $('#toast'); el.textContent = msg; el.hidden = false;
-    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.hidden = true; }, 3200);
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.hidden = true; }, 2200);
   }
 
   // ---------- wiring ----------
@@ -1970,7 +2048,7 @@ var ChartPdf = (function () {
       case 'add-floss': openPicker('Add a Floss', null, function (code) { app.floss = code; edit({ type: 'addFloss', floss: code }); }); break;
       case 'edge-floss': openPicker('Edge color', null, function (code) { edit({ type: 'edgeMode', mode: 'whole', floss: code }); }); break;
       case 'edge-clear': edit({ type: 'edgeClear' }); break;
-      case 'reset-view': app.view = { zoom: 1, panX: 0, panY: 0 }; render(); break;
+      case 'reset-view': app.view = { zoom: 1, panX: 0, panY: 0 }; app.bgView = { zoom: 1, panX: 0, panY: 0 }; render(); break;
       case 'export': exportPdf(); break;
       case 'close-dialog': t.closest('dialog').close(); break;
       case 'new-pattern': $('#patterns').close(); startNew(); break;
@@ -1992,7 +2070,50 @@ var ChartPdf = (function () {
     if (!guardEdits()) { this.value = app.colorCount; return; }
     app.colorCount = +this.value; $('#ccVal').textContent = this.value; queueRebuild();
   });
-  $('#showPhoto').addEventListener('click', function () { app.showPhoto = !app.showPhoto; renderPanels(); render(); });
+  $$('.js-compare').forEach(function (b) { b.addEventListener('click', function () { app.showPhoto = !app.showPhoto; render(); }); });
+  // Full-screen preview for close inspection.
+  function setFull(on) {
+    app.full = on;
+    $('.app').classList.toggle('full', on);
+    $('#btnFull').setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen');
+    $('#btnFull').innerHTML = on ? ICON_SHRINK : ICON_EXPAND;
+    requestAnimationFrame(render);
+  }
+  var ICON_EXPAND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+  var ICON_SHRINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
+  $('#btnFull').innerHTML = ICON_EXPAND;
+  $('#btnFull').addEventListener('click', function () { setFull(!app.full); });
+  $('#btnFit').addEventListener('click', function () {
+    app.view = { zoom: 1, panX: 0, panY: 0 }; app.bgView = { zoom: 1, panX: 0, panY: 0 }; render();
+  });
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && app.full) setFull(false); });
+
+  // Sliders only move when dragged sideways, so scrolling the page over them never changes a setting.
+  function tameSlider(input) {
+    var wrap = document.createElement('span'), shield = document.createElement('span'), st = null;
+    wrap.className = 'slider'; shield.className = 'slider-shield';
+    input.parentNode.insertBefore(wrap, input); wrap.appendChild(input); wrap.appendChild(shield);
+    function setFromX(x) {
+      var r = input.getBoundingClientRect(), t = Math.max(0, Math.min(1, (x - r.left - 10) / Math.max(1, r.width - 20)));
+      var min = +input.min, max = +input.max, step = +input.step || 1;
+      var v = Math.min(max, Math.max(min, Math.round((min + t * (max - min)) / step) * step));
+      if (String(v) !== input.value) { input.value = v; input.dispatchEvent(new Event('input', { bubbles: true })); }
+    }
+    shield.addEventListener('pointerdown', function (e) { st = { x: e.clientX, y: e.clientY, id: e.pointerId, drag: false, mouse: e.pointerType === 'mouse' }; });
+    shield.addEventListener('pointermove', function (e) {
+      if (!st || e.pointerId !== st.id) return;
+      var dx = e.clientX - st.x, dy = e.clientY - st.y;
+      if (!st.drag) {
+        if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy)) { st.drag = true; try { shield.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } }
+        else if (Math.abs(dy) > 6) { st = null; return; }
+        else return;
+      }
+      setFromX(e.clientX);
+    });
+    shield.addEventListener('pointerup', function (e) { if (st && !st.drag && st.mouse) setFromX(e.clientX); st = null; });
+    shield.addEventListener('pointercancel', function () { st = null; });
+  }
+  $$('input[type=range]').forEach(tameSlider);
   $('#margin').addEventListener('input', function () { edit({ type: 'margin', margin: +this.value }); });
   $('#ringCustom').addEventListener('change', function () { edit({ type: 'ring', size: Math.max(1, Math.min(4, +this.value || 2)) }); });
   window.addEventListener('resize', render);
