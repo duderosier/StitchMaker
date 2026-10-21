@@ -59,6 +59,9 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 ## Split Cells and HEIC (2026-10-20)
 - [ ] Import a chart with ¾ stitches: split squares show as two triangles on Edit, and the Split tool is already on.
 - [ ] Edit → Extra stitch types On → Split: tap each half of a square, change the diagonal, tap a half again to clear it.
-- [ ] Chart PDF shows split squares with a diagonal and two small symbols; the legend lists "split halves".
+- [ ] Chart PDF shows split squares with a diagonal and two small symbols; the legend lists "+ N ½" for split halves.
 - [ ] Choose photo and Import chart both accept a .heic photo (Chrome/DuckDuckGo need internet the first time).
 - [ ] DuckDuckGo with the address bar at the bottom: the dock buttons sit above the bar.
+- [ ] Import a chart with black outlines: the threads step lists "Backstitch lines" with 310; the pattern shows them as lines.
+- [ ] Edit → Line: tap a corner, tap more corners to chain, tap the last one to stop; tap a line to remove it.
+- [ ] Chart PDF prints the lines and a Backstitch section with lengths.

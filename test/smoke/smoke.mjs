@@ -154,6 +154,13 @@ try {
   const b3 = await page.locator('#stage').boundingBox();
   await page.mouse.click(b3.x + b3.width / 2 + 3, b3.y + b3.height / 2 + 45);
   await page.waitForTimeout(100);
+  await page.click('#toolLine');
+  await page.mouse.click(b3.x + b3.width / 2 - 30, b3.y + b3.height / 2 - 40);
+  await page.mouse.click(b3.x + b3.width / 2 + 30, b3.y + b3.height / 2 - 40);
+  await page.waitForTimeout(100);
+  await tab(page, 'chart');
+  const chartTxt = await page.textContent('#chartSummary');
+  check(/1 backstitch lines?/.test(chartTxt), `the Line tool stitches a Backstitch between two corners (${chartTxt})`);
   await tab(page, 'colors');
   const splitTxt = (await page.locator('#flossList .floss .ct').allTextContents()).join(' ');
   check(/split/.test(splitTxt), `tapping with the Split tool makes a Split Cell (${splitTxt})`);

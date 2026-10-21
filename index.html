@@ -137,6 +137,7 @@ h1, h2, h3 { text-transform: lowercase; letter-spacing: -0.005em; }
 .stage-btn svg { width: 20px; height: 20px; vertical-align: -4px; }
 .stage-btn[aria-pressed=true] { background: var(--ink); color: #fff; }
 .stage-btn[hidden] { display: none; }
+[hidden] { display: none !important; }
 .readout {
   position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 2; max-width: calc(100% - 28px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: rgba(255, 255, 255, .94); border-radius: 999px; padding: 5px 12px;
@@ -494,6 +495,7 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
         <button data-tool="eraser">Eraser</button>
         <button data-tool="eyedropper">Pick color</button>
         <button data-tool="split" id="toolSplit" hidden>Split</button>
+        <button data-tool="line" id="toolLine" hidden>Line</button>
         <button data-tool="move">Move</button>
       </div>
       <div class="row" id="splitRow" hidden><span class="field-label">Diagonal</span>
@@ -509,7 +511,7 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
       <div class="row"><span class="field-label">Extra stitch types</span>
         <div class="seg" id="extraStitches"><button data-extra="0">Off</button><button data-extra="1">On</button></div>
       </div>
-      <p class="muted" id="extraNote">On adds the Split tool for ¾ stitches: two colors in one square, split along a diagonal.</p>
+      <p class="muted" id="extraNote">On adds Split, for ¾ stitches (two colors in one square), and Line, for backstitch outlines.</p>
       <p class="muted">Use two fingers to zoom and move the grid.</p>
     </div>
 
@@ -928,7 +930,7 @@ var PatternEngine = (function () {
     return {
       v: 1, blank: blank, cols: g.cols, rows: g.rows,
       colorCount: opts.colorCount || 6, confetti: confetti,
-      cells: cells, splits: {}, palette: pal, overcast: overcast, extraStitches: false, edits: [], past: [], future: []
+      cells: cells, splits: {}, backstitches: [], palette: pal, overcast: overcast, extraStitches: false, edits: [], past: [], future: []
     };
   }
 
@@ -940,11 +942,11 @@ var PatternEngine = (function () {
   // { diagonal: '/' (a = top-left triangle, b = bottom-right) or '\\' (a = top-right, b = bottom-left), a, b }
   // with a Floss index or -1 per triangle. Entries are never mutated, only replaced.
   function snapshot(p) {
-    return { cells: p.cells.slice(), splits: Object.assign({}, p.splits || {}), palette: p.palette.slice(), overcast: JSON.parse(JSON.stringify(p.overcast || null)), edits: (p.edits || []).slice() };
+    return { cells: p.cells.slice(), splits: Object.assign({}, p.splits || {}), backstitches: (p.backstitches || []).slice(), palette: p.palette.slice(), overcast: JSON.parse(JSON.stringify(p.overcast || null)), edits: (p.edits || []).slice() };
   }
   function withState(p, snap, past, future) {
     var q = {}; Object.keys(p).forEach(function (k) { q[k] = p[k]; });
-    q.cells = snap.cells; q.splits = snap.splits || {}; q.palette = snap.palette; q.overcast = snap.overcast; q.edits = snap.edits || []; q.past = past; q.future = future;
+    q.cells = snap.cells; q.splits = snap.splits || {}; q.backstitches = snap.backstitches || []; q.palette = snap.palette; q.overcast = snap.overcast; q.edits = snap.edits || []; q.past = past; q.future = future;
     return q;
   }
   // Store one Split Cell, settling it to a full Stitch (one Floss both sides) or Unstitched (neither).
@@ -956,6 +958,15 @@ var PatternEngine = (function () {
   }
   function mapSplits(cells, splits, fn) {
     Object.keys(splits).forEach(function (c) { var t = splits[c]; putSplit(cells, splits, +c, t.diagonal, fn(t.a), fn(t.b)); });
+  }
+  // Backstitches: straight lines between grid corners { x0, y0, x1, y1, f } (corners run 0..cols, 0..rows),
+  // each with its own Floss. They are not Palette Flosses and never count toward the Color Count.
+  function sameLine(b, l) {
+    return (b.x0 === l[0] && b.y0 === l[1] && b.x1 === l[2] && b.y1 === l[3]) || (b.x0 === l[2] && b.y0 === l[3] && b.x1 === l[0] && b.y1 === l[1]);
+  }
+  function lineFits(p, l) {
+    return l.every(function (v) { return v === Math.round(v); }) && (l[0] !== l[2] || l[1] !== l[3]) &&
+      Math.min(l[0], l[2]) >= 0 && Math.min(l[1], l[3]) >= 0 && Math.max(l[0], l[2]) <= p.cols && Math.max(l[1], l[3]) <= p.rows;
   }
   // The Pattern with the Split tool shown or hidden (a per-Pattern setting, not an edit).
   function withExtraStitches(p, on) { var q = {}; Object.keys(p).forEach(function (k) { q[k] = p[k]; }); q.extraStitches = !!on; return q; }
@@ -976,7 +987,9 @@ var PatternEngine = (function () {
         if (from === to) return p;
         for (i = 0; i < cells.length; i++) if (cells[i] === from) cells[i] = to;
         mapSplits(cells, next.splits, function (f) { return f === from ? to : f; });
+        next.backstitches = next.backstitches.map(function (b) { return b.f === from ? { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, f: to } : b; });
         var at = pal.indexOf(from);
+        if (at < 0) break; // only Backstitches used it
         if (pal.indexOf(to) >= 0) pal.splice(at, 1); else pal[at] = to;
         break;
       }
@@ -1003,6 +1016,19 @@ var PatternEngine = (function () {
         });
         break;
       }
+      case 'backstitch': {
+        var bf = flossIndex(cmd.floss), bs = next.backstitches;
+        cmd.lines.forEach(function (l) {
+          if (!lineFits(p, l)) return;
+          var k = -1; bs.forEach(function (b, j) { if (sameLine(b, l)) k = j; });
+          if (k >= 0) bs[k] = { x0: bs[k].x0, y0: bs[k].y0, x1: bs[k].x1, y1: bs[k].y1, f: bf };
+          else bs.push({ x0: l[0], y0: l[1], x1: l[2], y1: l[3], f: bf });
+        });
+        break;
+      }
+      case 'unbackstitch':
+        next.backstitches = next.backstitches.filter(function (b) { return !cmd.lines.some(function (l) { return sameLine(b, l); }); });
+        break;
       case 'split': {
         var ia = cmd.a == null ? -1 : flossIndex(cmd.a), ib = cmd.b == null ? -1 : flossIndex(cmd.b), ins = insideOf(p);
         if (cmd.diagonal !== '/' && cmd.diagonal !== '\\') throw new Error('A split runs / or \\');
@@ -1037,7 +1063,7 @@ var PatternEngine = (function () {
   function rebase(old, base) {
     var p = base, sameGrid = old.cols === base.cols && old.rows === base.rows;
     (old.edits || []).forEach(function (cmd) {
-      if (!sameGrid && (cmd.type === 'paint' || cmd.type === 'erase' || cmd.type === 'split')) return;
+      if (!sameGrid && /^(paint|erase|split|backstitch|unbackstitch)$/.test(cmd.type)) return;
       if ((cmd.type === 'merge' || cmd.type === 'swap' || cmd.type === 'unstitch') && p.palette.indexOf(flossIndex(cmd.from || cmd.floss)) < 0) return;
       if (cmd.type === 'merge' && p.palette.indexOf(flossIndex(cmd.into)) < 0) return;
       try { p = apply(p, cmd); } catch (err) { /* no longer applicable */ }
@@ -1217,16 +1243,19 @@ var PatternEngine = (function () {
     function note(f) { if (f >= 0 && snap.palette.indexOf(f) < 0 && !extra[f]) { extra[f] = 1; codes.push(DMC[f].code); } }
     snap.cells.forEach(note);
     Object.keys(splits).forEach(function (c) { note(splits[c].a); note(splits[c].b); });
+    (snap.backstitches || []).forEach(function (b) { note(b.f); });
     var all = codes.map(flossIndex), saved = {};
     function k(f) { return f < 0 ? -1 : all.indexOf(f); }
     Object.keys(splits).forEach(function (c) { saved[c] = [splits[c].diagonal, k(splits[c].a), k(splits[c].b)]; });
-    return { codes: codes, paletteLength: snap.palette.length, cells: snap.cells.map(k), splits: saved, overcast: snap.overcast, edits: snap.edits || [] };
+    var lines = (snap.backstitches || []).map(function (b) { return [b.x0, b.y0, b.x1, b.y1, k(b.f)]; });
+    return { codes: codes, paletteLength: snap.palette.length, cells: snap.cells.map(k), splits: saved, backstitches: lines, overcast: snap.overcast, edits: snap.edits || [] };
   }
   function fromSaved(o) {
     var all = o.codes.map(flossIndex), splits = {};
     function f(k) { return k < 0 ? -1 : all[k]; }
     Object.keys(o.splits || {}).forEach(function (c) { var t = o.splits[c]; splits[c] = { diagonal: t[0], a: f(t[1]), b: f(t[2]) }; });
-    return { palette: all.slice(0, o.paletteLength), cells: o.cells.map(f), splits: splits, overcast: o.overcast || null, edits: o.edits || [] };
+    var lines = (o.backstitches || []).map(function (l) { return { x0: l[0], y0: l[1], x1: l[2], y1: l[3], f: f(l[4]) }; });
+    return { palette: all.slice(0, o.paletteLength), cells: o.cells.map(f), splits: splits, backstitches: lines, overcast: o.overcast || null, edits: o.edits || [] };
   }
   function serialize(p) {
     return {
@@ -1462,7 +1491,7 @@ var PatternEngine = (function () {
       var Wm = Math.max(4, Math.round(N / 30)), pre = new Float64Array(N + 2), H = new Float64Array(N + 1);
       for (i = 0; i <= N; i++) pre[i + 1] = pre[i] + P[i];
       for (i = 0; i <= N; i++) { var l0 = Math.max(0, i - Wm), l1 = Math.min(N, i + Wm); H[i] = P[i] - (pre[l1 + 1] - pre[l0]) / (l1 - l0 + 1); }
-      var maxLag = Math.floor(N / 3), A = new Float64Array(maxLag + 2), top = 0;
+      var maxLag = Math.floor(N / 3), A = new Float64Array(maxLag + 2), top = 0, topLag = 0;
       for (var lag = 3; lag <= maxLag + 1; lag++) {
         var acc = 0; for (i = 0; i + lag <= N; i++) acc += H[i] * H[i + lag];
         A[lag] = acc / (N + 1 - lag);
@@ -1472,11 +1501,13 @@ var PatternEngine = (function () {
       for (lag = 4; lag <= maxLag; lag++) {
         if (!(A[lag] >= A[lag - 1] && A[lag] >= A[lag + 1])) continue;
         var lo = Infinity; for (var k2 = Math.floor(lag / 2); k2 < lag; k2++) lo = Math.min(lo, A[k2]);
-        prom[lag] = A[lag] - lo; if (prom[lag] > top) top = prom[lag];
+        prom[lag] = A[lag] - lo; if (prom[lag] > top) { top = prom[lag]; topLag = lag; }
       }
       if (top <= 0) return 1;
+      // The first strong repeat, and a real one: a small shoulder beside a big peak can stand out from the
+      // dip before it, but it isn't nearly as high.
       var pitch = 0;
-      for (lag = 4; lag <= maxLag; lag++) if (prom[lag] >= 0.4 * top) { pitch = lag; break; }
+      for (lag = 4; lag <= maxLag; lag++) if (prom[lag] >= 0.4 * top && A[lag] >= 0.35 * A[topLag]) { pitch = lag; break; }
       if (!pitch) return 1;
       // Refine the spacing to a sub-sample peak, then to the whole number of cells that fits.
       var y0 = A[pitch - 1], y1 = A[pitch], y2 = A[pitch + 1], den = y0 - 2 * y1 + y2;
@@ -1664,7 +1695,59 @@ var PatternEngine = (function () {
       var h = halves[c]; cells[c] = h[0];
       if (h[0] !== h[1]) splits.push({ x: c % cols, y: Math.floor(c / cols), diagonal: cellsSample[c].split, a: h[0], b: h[1] });
     });
-    return { cols: cols, rows: rows, cells: cells, splits: splits, groups: groupsOut, grid: grid };
+    var found = readLines(img, grid);
+    return { cols: cols, rows: rows, cells: cells, splits: splits, groups: groupsOut, lines: found.lines, lineGroups: found.groups, grid: grid };
+  }
+  // Backstitch on a Source Chart: heavy lines from grid corner to corner, along a cell side or across a cell.
+  // A line is dark along nearly its whole length and clearly darker than both sides; one along a cell side
+  // must also be thicker than a bold gridline.
+  function readLines(img, grid) {
+    var cols = grid.cols, rows = grid.rows, lines = [];
+    function lum(gx, gy) { var q = gridPoint(grid, gx, gy), c = pixelAt(img, q[0], q[1]); return { y: 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2], rgb: c }; }
+    function pct(a, f) { a.sort(function (p, q) { return p - q; }); return a[Math.min(a.length - 1, Math.floor(a.length * f))]; }
+    // Across the line at each point: the darkest pixel near the middle (the fitted grid can sit a pixel off a
+    // heavy line), and how wide the dark band is.
+    function test(x0, y0, x1, y1) {
+      var dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy), nx = -dy / len, ny = dx / len, axis = !dx || !dy;
+      var pts = [], sideA = [], sideB = [];
+      for (var k = 0; k < 11; k++) { // right out to the corners, so a symbol inside the cell never passes
+        var t = 0.06 + 0.88 * k / 10, gx = x0 + dx * t, gy = y0 + dy * t, prof = [];
+        for (var j = axis ? -6 : -2; j <= (axis ? 6 : 2); j++) prof.push(lum(gx + nx * j * 0.025, gy + ny * j * 0.025));
+        pts.push(prof);
+        sideA.push(lum(gx + nx * 0.3, gy + ny * 0.3).y); sideB.push(lum(gx - nx * 0.3, gy - ny * 0.3).y);
+      }
+      var side = Math.min(pct(sideA, 0.8), pct(sideB, 0.8)), cut = Math.min(110, side - 80), mid = axis ? 6 : 2;
+      var cores = pts.map(function (prof) { var m = prof[mid]; for (var j = mid - 2; j <= mid + 2; j++) if (prof[j].y < m.y) m = prof[j]; return m; });
+      if (pct(cores.map(function (c) { return c.y; }), 1) > cut) return;
+      if (axis && pct(pts.map(function (prof) { return prof.filter(function (c) { return c.y < cut; }).length * 0.025; }), 0.5) < 0.16) return;
+      cores.sort(function (p, q) { return p.y - q.y; });
+      var rgb = [0, 0, 0], n = 5;
+      for (k = 0; k < n; k++) { rgb[0] += cores[k].rgb[0] / n; rgb[1] += cores[k].rgb[1] / n; rgb[2] += cores[k].rgb[2] / n; }
+      lines.push({ x0: x0, y0: y0, x1: x1, y1: y1, rgb: rgb, lab: rgbToLab(rgb) });
+    }
+    for (var y = 0; y <= rows; y++) for (var x = 0; x <= cols; x++) {
+      if (x < cols) test(x, y, x + 1, y);
+      if (y < rows) test(x, y, x, y + 1);
+      if (x < cols && y < rows) { test(x, y, x + 1, y + 1); test(x, y + 1, x + 1, y); }
+    }
+    // Group lines by color, as the chart's key lists one thread per line color.
+    var groups = [];
+    lines.forEach(function (l) {
+      var best = -1, bd = 25;
+      groups.forEach(function (g, gi) { var d = dE76(l.lab, g.lab); if (d < bd) { bd = d; best = gi; } });
+      if (best < 0) { groups.push({ lab: l.lab, sum: [0, 0, 0], count: 0 }); best = groups.length - 1; }
+      var g = groups[best]; g.count++; g.sum = g.sum.map(function (v, ch) { return v + l.rgb[ch]; });
+      l.group = best;
+    });
+    var order = groups.map(function (g, i) { return i; }).sort(function (a, b) { return groups[b].count - groups[a].count; }), rank = [];
+    order.forEach(function (gi, r) { rank[gi] = r; });
+    return {
+      lines: lines.map(function (l) { return { x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1, group: rank[l.group] }; }),
+      groups: order.map(function (gi) {
+        var g = groups[gi], rgb = g.sum.map(function (v) { return Math.round(v / g.count); });
+        return { rgb: rgb, hex: rgbHex(rgb), count: g.count, guess: DMC[nearestDmc(rgbToLab(rgb))].code };
+      })
+    };
   }
   // The custom Blank that holds a cols × rows chart cell for cell at a Fabric Count.
   function chartBlank(cols, rows, count, finish) {
@@ -1681,7 +1764,13 @@ var PatternEngine = (function () {
       putSplit(p.cells, p.splits, t.y * read.cols + t.x, t.diagonal, a, b);
       used.push(a, b);
     });
-    p.extraStitches = Object.keys(p.splits).length > 0;
+    var lf = (opts.lineFlosses || []).map(function (code) { return code == null ? -1 : flossIndex(code); });
+    (read.lines || []).forEach(function (l) {
+      var f = lf[l.group];
+      if (f == null || f < 0) return;
+      p.backstitches.push({ x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1, f: f });
+    });
+    p.extraStitches = Object.keys(p.splits).length > 0 || p.backstitches.length > 0;
     p.palette = orderPalette(p.cells, used.filter(function (f) { return f >= 0; }).filter(function (f, i, arr) { return arr.indexOf(f) === i; }));
     if (p.overcast) p.overcast = defaultOvercast(p.blank, p.cols, p.palette);
     return p;
@@ -1752,6 +1841,8 @@ var PatternEngine = (function () {
       return { x: sx - x0, y: sy - y0, diagonal: t.diagonal, a: half(t.a), b: half(t.b) };
     });
     out.legend = pal.map(function (f) { var o = flossOut(f); o.symbol = symbolOf[f]; o.count = counts[f] || 0; o.parts = parts[f] || 0; return o; });
+    out.backstitches = backstitches(p).map(function (b) { return { x0: b.x0 - x0, y0: b.y0 - y0, x1: b.x1 - x0, y1: b.y1 - y0, code: b.code, hex: b.hex }; });
+    out.backstitchLegend = backstitchLegend(p);
     var next = pal.length;
     out.edgeLegend = edgeLegend(p).map(function (e) {
       var i = flossIndex(e.code);
@@ -1785,7 +1876,7 @@ var PatternEngine = (function () {
     var blank = opts.blank, g = blankGrid(blank), pal = (opts.palette || []).map(flossIndex);
     return {
       v: 1, blank: blank, cols: g.cols, rows: g.rows, colorCount: opts.colorCount || 6, confetti: 0,
-      cells: new Array(g.cols * g.rows).fill(-1), splits: {}, palette: pal, extraStitches: false,
+      cells: new Array(g.cols * g.rows).fill(-1), splits: {}, backstitches: [], palette: pal, extraStitches: false,
       overcast: isOvercast(blank) ? (opts.overcast ? JSON.parse(JSON.stringify(opts.overcast)) : defaultOvercast(blank, g.cols, pal)) : null,
       edits: [], past: [], future: []
     };
@@ -1803,6 +1894,8 @@ var PatternEngine = (function () {
       next.cells[c] = p.cells[y * p.cols + x];
       if (p.splits && p.splits[y * p.cols + x]) next.splits[c] = p.splits[y * p.cols + x];
     }
+    next.backstitches = (p.backstitches || []).map(function (b) { return { x0: b.x0 + ox, y0: b.y0 + oy, x1: b.x1 + ox, y1: b.y1 + oy, f: b.f }; })
+      .filter(function (b) { return lineFits(next, [b.x0, b.y0, b.x1, b.y1]); });
     next.palette = p.palette.slice();
     next.extraStitches = !!p.extraStitches;
     next.confetti = p.confetti;
@@ -1824,6 +1917,19 @@ var PatternEngine = (function () {
       return { x: x, y: (c - x) / p.cols, diagonal: t.diagonal, a: t.a >= 0 ? DMC[t.a].code : null, b: t.b >= 0 ? DMC[t.b].code : null };
     });
   }
+  // Every Backstitch with its Floss code and color.
+  function backstitches(p) {
+    return (p.backstitches || []).map(function (b) { return { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, code: DMC[b.f].code, hex: DMC[b.f].hex }; });
+  }
+  // Each Backstitch Floss with its number of lines and total length in stitches (one cell side = 1).
+  function backstitchLegend(p) {
+    var by = {}, order = [];
+    (p.backstitches || []).forEach(function (b) {
+      if (!by[b.f]) { by[b.f] = { len: 0, n: 0 }; order.push(b.f); }
+      by[b.f].len += Math.hypot(b.x1 - b.x0, b.y1 - b.y0); by[b.f].n++;
+    });
+    return order.map(function (f) { var o = flossOut(f); o.length = Math.round(by[f].len * 10) / 10; o.count = by[f].n; return o; });
+  }
   // Each Palette Floss with its full Stitches (count) and Split Cell triangles (parts).
   function palette(p) {
     var counts = {}, parts = {}, s = effectiveSplits(p);
@@ -1844,7 +1950,7 @@ var PatternEngine = (function () {
     readChart: readChart, estimateGridCounts: estimateGridCounts, fitChartGrid: fitChartGrid, gridPoint: gridPoint, cornerGrid: cornerGrid, guessChartCorners: guessChartCorners,
     createImportedPattern: createImportedPattern, chartBlank: chartBlank,
     blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette,
-    splitAt: splitAt, splitList: splitList, withExtraStitches: withExtraStitches, splitTriangles: splitTriangles, splitSide: splitSide
+    splitAt: splitAt, splitList: splitList, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, splitTriangles: splitTriangles, splitSide: splitSide
   };
 })();
 </script>
@@ -1884,7 +1990,8 @@ var ChartPdf = (function () {
     text('F1', 10, M, PAGE_H - M - 30, sub);
 
     // Legend sizing
-    var rows = chart.legend.length + (chart.edgeLegend.length ? chart.edgeLegend.length + 1 : 0);
+    var backLegend = chart.backstitchLegend || [];
+    var rows = chart.legend.length + (chart.edgeLegend.length ? chart.edgeLegend.length + 1 : 0) + (backLegend.length ? backLegend.length + 1 : 0);
     var perCol = Math.ceil(rows / 2), rowH = 15, legendH = perCol * rowH + 26;
     var top = PAGE_H - M - 48, bottom = M + legendH + 14;
     var availW = PAGE_W - 2 * M - 16, availH = top - bottom - 12;
@@ -1938,6 +2045,12 @@ var ChartPdf = (function () {
         text('F2', fs2, h.cx - fs2 * 0.31, h.cy - fs2 * 0.35, h.f.symbol);
       });
     });
+    // Backstitches: thick lines in their thread color (black in black and white)
+    ops.push('1 J');
+    (chart.backstitches || []).forEach(function (b) {
+      ops.push(pdfNum(Math.max(1.2, cs * 0.16)) + ' w'); stroke(bw ? '#000000' : b.hex);
+      line(X(b.x0), Y(b.y0), X(b.x1), Y(b.y1));
+    });
     // Outline / Edge Stitches
     function seg(o) { var u = PatternEngine.sideSegment(o.x, o.y, o.side); return [X(u[0]), Y(u[1]), X(u[2]), Y(u[3])]; }
     ops.push('1 J');
@@ -1969,18 +2082,28 @@ var ChartPdf = (function () {
       entries.push({ heading: 'Edge stitches (overcast)' });
       chart.edgeLegend.forEach(function (r) { entries.push({ r: r, edge: true }); });
     }
+    if (backLegend.length) {
+      entries.push({ heading: 'Backstitch' });
+      backLegend.forEach(function (r) { entries.push({ r: r, back: true }); });
+    }
     entries.forEach(function (e, k) {
       var col = k < perCol ? 0 : 1, rowi = k < perCol ? k : k - perCol;
       var x = M + col * colW, y = ly - rowi * rowH;
       if (e.heading) { fill('#34193A'); text('F2', 9, x, y + 2, e.heading); return; }
       var r = e.r;
+      if (e.back) {
+        ops.push('2 w'); stroke(bw ? '#000000' : r.hex); line(x + 1, y + 3.5, x + 17, y + 3.5);
+        fill('#34193A'); text('F2', 9, x + 24, y, r.code);
+        text('F1', 9, x + 58, y, r.name + '  (' + pdfNum(r.length) + ' stitches long)');
+        return;
+      }
       if (!bw) { fill(r.hex); rect(x, y - 2, 18, 11, 'f'); }
       ops.push('0.5 w'); stroke('#34193A'); rect(x, y - 2, 18, 11, 'S');
       fill(bw ? '#000000' : (luminance(r.hex) < 0.45 ? '#FFFFFF' : '#000000'));
       text('F2', 8, x + 6, y + 0.5, e.edge ? (bw && chart.edgeLegend.length > 1 ? r.symbol : '') : r.symbol);
       fill('#34193A');
       text('F2', 9, x + 24, y, r.code);
-      text('F1', 9, x + 58, y, r.name + '  (' + r.count + (e.edge ? ' edge stitches)' : ' stitches' + (r.parts ? ', ' + r.parts + ' split halves' : '') + ')'));
+      text('F1', 9, x + 58, y, r.name + '  (' + r.count + (e.edge ? ' edge stitches)' : ' stitches' + (r.parts ? ' + ' + r.parts + ' \u00BD' : '') + ')'));
     });
     fill('#7A6380');
     text('F1', 6.5, M, M - 14, 'Color data: craft-color-codes by MakeBead (makebead.com), CC BY 4.0. Made with StitchMaker.');
@@ -2025,7 +2148,7 @@ var ChartPdf = (function () {
     blank: { shape: 'preset', presetId: 'round-2', count: 14, finish: 'framed' },
     photo: null, masked: null, mask: null, maskPast: [], maskFuture: [], maskOverlay: null,
     frame: null, colorCount: 6, confetti: 1, pattern: null,
-    tab: 'photo', tool: 'pencil', splitDiag: '/', edgeTool: 'ring', bgTool: 'wand', tolerance: 20, brush: 24,
+    tab: 'photo', tool: 'pencil', splitDiag: '/', lineFrom: null, edgeTool: 'ring', bgTool: 'wand', tolerance: 20, brush: 24,
     floss: null, selected: null, showPhoto: false, bw: false,
     source: null, // an imported Source Chart: { page, straight (canvases), corners, cols, rows, flosses }
     view: { zoom: 1, panX: 0, panY: 0 }, bgView: { zoom: 1, panX: 0, panY: 0 }, full: false
@@ -2364,6 +2487,27 @@ var ChartPdf = (function () {
     for (x = R.gx; x <= R.x0 + R.w; x += 10) { sctx.moveTo(G.toX(x), G.toY(R.y0)); sctx.lineTo(G.toX(x), G.toY(R.y0 + R.h)); }
     for (y = R.gy; y <= R.y0 + R.h; y += 10) { sctx.moveTo(G.toX(R.x0), G.toY(y)); sctx.lineTo(G.toX(R.x0 + R.w), G.toY(y)); }
     sctx.stroke();
+    // Backstitches: thread-colored lines from corner to corner, with a pale halo so dark lines read on dark stitches.
+    if (!comparingChart()) {
+      var bw2 = Math.max(2, cs * 0.2);
+      sctx.lineCap = 'round';
+      var bsl = E.backstitches(p);
+      sctx.globalAlpha = sel ? 0.25 : 1;
+      sctx.lineWidth = bw2 + 2; sctx.strokeStyle = 'rgba(255,255,255,0.75)'; sctx.beginPath();
+      bsl.forEach(function (b) { sctx.moveTo(G.toX(b.x0), G.toY(b.y0)); sctx.lineTo(G.toX(b.x1), G.toY(b.y1)); });
+      sctx.stroke(); // all halos first, so one line's halo never cuts into the next line
+      sctx.lineWidth = bw2;
+      bsl.forEach(function (b) {
+        sctx.strokeStyle = b.hex; sctx.beginPath();
+        sctx.moveTo(G.toX(b.x0), G.toY(b.y0)); sctx.lineTo(G.toX(b.x1), G.toY(b.y1)); sctx.stroke();
+      });
+      sctx.globalAlpha = 1;
+    }
+    if (app.tab === 'edit' && app.tool === 'line' && app.lineFrom) {
+      var r0 = Math.max(6, cs * 0.3);
+      sctx.fillStyle = '#F2C65E'; sctx.strokeStyle = '#4A1D5E'; sctx.lineWidth = 2.5;
+      sctx.beginPath(); sctx.arc(G.toX(app.lineFrom[0]), G.toY(app.lineFrom[1]), r0, 0, Math.PI * 2); sctx.fill(); sctx.stroke();
+    }
     // Outline, Edge Stitches and Ring Hole
     if (L) {
       for (var hi = 0; hi < L.hole.length; hi++) if (L.hole[hi]) {
@@ -2382,7 +2526,7 @@ var ChartPdf = (function () {
     } else {
       sctx.lineWidth = 2; sctx.strokeStyle = '#6B3482'; sctx.lineCap = 'square'; sctx.stroke(outlinePath(G));
     }
-    var hints = { edit: { pencil: 'Tap or drag to stitch', eraser: 'Tap or drag to unstitch', eyedropper: 'Tap a Stitch to pick its color', move: 'Drag to move, pinch to zoom', split: 'Tap half a square to stitch it; tap again to clear' },
+    var hints = { edit: { pencil: 'Tap or drag to stitch', eraser: 'Tap or drag to unstitch', eyedropper: 'Tap a Stitch to pick its color', move: 'Drag to move, pinch to zoom', split: 'Tap half a square to stitch it; tap again to clear', line: app.lineFrom ? 'Tap another corner; tap this one to finish' : 'Tap a corner to start a line; tap a line to remove it' },
       edge: { ring: 'Tap where the Ring Hole goes', edgepaint: 'Tap edge stitches to paint them' } };
     setHint(app.tab === 'edit' ? hints.edit[app.tool] : app.tab === 'edge' && L ? hints.edge[app.edgeTool] : '');
   }
@@ -2414,7 +2558,7 @@ var ChartPdf = (function () {
     var m = viewMode();
     if (app.tab === 'photo') return app.photo ? 'frame' : 'pan';
     if (m === 'bg') return app.bgTool === 'wand' ? 'tap' : 'draw';
-    if (app.tab === 'edit' && m === 'pattern') return app.tool === 'move' ? 'pan' : app.tool === 'eyedropper' || app.tool === 'split' ? 'tap' : 'draw';
+    if (app.tab === 'edit' && m === 'pattern') return app.tool === 'move' ? 'pan' : app.tool === 'eyedropper' || app.tool === 'split' || app.tool === 'line' ? 'tap' : 'draw';
     if (app.tab === 'edge' && m === 'pattern' && app.pattern && E.overcastLayout(app.pattern)) return app.edgeTool === 'ring' ? 'tap' : 'draw';
     return 'pan';
   }
@@ -2539,6 +2683,8 @@ var ChartPdf = (function () {
       maskChanged();
     } else if (app.tab === 'edit' && app.tool === 'split') {
       splitTap(x, y);
+    } else if (app.tab === 'edit' && app.tool === 'line') {
+      lineTap(x, y);
     } else if (app.tab === 'edit') {
       var c = cellUnder(x, y), hit = inGrid(c) && E.cellAt(app.pattern, c[0], c[1]);
       var sp = inGrid(c) && !hit && E.splitAt(app.pattern, c[0], c[1]);
@@ -2550,6 +2696,27 @@ var ChartPdf = (function () {
     }
   }
   function cellUnder(x, y) { var G = geometry(); return [Math.floor(G.cellX(x)), Math.floor(G.cellY(y))]; }
+  // The Line tool: tap a grid corner, then another, to stitch a Backstitch between them; the line carries on
+  // from where it ended until the last corner is tapped again. Tapping a line (away from corners) removes it.
+  function lineTap(x, y) {
+    var G = geometry(), gx = G.cellX(x), gy = G.cellY(y), p = app.pattern, near = Math.max(0.3, 14 / G.cs);
+    var c = [Math.round(gx), Math.round(gy)], onCorner = Math.hypot(gx - c[0], gy - c[1]) < near && c[0] >= 0 && c[1] >= 0 && c[0] <= p.cols && c[1] <= p.rows;
+    var from = app.lineFrom;
+    if (onCorner) {
+      if (from && from[0] === c[0] && from[1] === c[1]) { app.lineFrom = null; render(); return; }
+      app.lineFrom = c;
+      if (from) edit({ type: 'backstitch', floss: app.floss || DEFAULT_FLOSS, lines: [[from[0], from[1], c[0], c[1]]] }); else render();
+      return;
+    }
+    var best = null, bd = near;
+    E.backstitches(p).forEach(function (b) {
+      var vx = b.x1 - b.x0, vy = b.y1 - b.y0, t = Math.max(0, Math.min(1, ((gx - b.x0) * vx + (gy - b.y0) * vy) / (vx * vx + vy * vy)));
+      var d = Math.hypot(gx - (b.x0 + vx * t), gy - (b.y0 + vy * t));
+      if (d < bd) { bd = d; best = b; }
+    });
+    app.lineFrom = null;
+    if (best) edit({ type: 'unbackstitch', lines: [[best.x0, best.y0, best.x1, best.y1]] }); else render();
+  }
   // The Split tool: the tapped triangle takes the current Floss, or clears if it already has it. A full Stitch
   // keeps its Floss in the other triangle; a split along the other diagonal is re-cut along the chosen one.
   function splitTap(x, y) {
@@ -2696,8 +2863,8 @@ var ChartPdf = (function () {
     $('#flossActions').hidden = !app.selected;
     // Edit
     var extra = !!(p && p.extraStitches);
-    if (!extra && app.tool === 'split') app.tool = 'pencil';
-    $('#toolSplit').hidden = !extra;
+    if (!extra && (app.tool === 'split' || app.tool === 'line')) app.tool = 'pencil';
+    $('#toolSplit').hidden = !extra; $('#toolLine').hidden = !extra;
     pressed($('#tool'), 'data-tool', app.tool);
     $('#splitRow').hidden = app.tool !== 'split';
     pressed($('#splitDiag'), 'data-diag', app.splitDiag);
@@ -2708,7 +2875,7 @@ var ChartPdf = (function () {
     $('[data-tab=edge]').hidden = !over;
     if (over && app.tab === 'edge') renderEdgePane(p, L, pal);
     // Chart
-    if (chart) $('#chartSummary').textContent = chart.legend.length + ' colors, ' + chart.cells.length + ' stitches' + (chart.splits.length ? ', ' + chart.splits.length + ' split squares' : '') + (chart.edges.length ? ', ' + chart.edges.length + ' edge stitches' : '') + '. ' + chart.header.size + '.';
+    if (chart) $('#chartSummary').textContent = chart.legend.length + ' colors, ' + chart.cells.length + ' stitches' + (chart.splits.length ? ', ' + plural(chart.splits.length, 'split square') : '') + (chart.backstitches.length ? ', ' + plural(chart.backstitches.length, 'backstitch line') : '') + (chart.edges.length ? ', ' + chart.edges.length + ' edge stitches' : '') + '. ' + chart.header.size + '.';
     pressed($('#bw'), 'data-bw', app.bw ? 1 : 0);
     // History
     $('#undo').disabled = !(p && E.canUndo(p));
@@ -2752,7 +2919,8 @@ var ChartPdf = (function () {
     if (t !== 'colors' && t !== 'edit') app.showPhoto = false;
     renderPanels(); render();
   }
-  function setTool(t) { app.tool = t; renderPanels(); render(); }
+  function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+  function setTool(t) { app.tool = t; app.lineFrom = null; renderPanels(); render(); }
 
   // ---------- DMC picker ----------
   var pickerDone = null;
@@ -2862,7 +3030,7 @@ var ChartPdf = (function () {
       return new Promise(function (r) { c.toBlob(r, 'image/jpeg', 0.88); }).then(function (b) { src[key] = b; return b; });
     }
     return Promise.all([blob(src.page, 'pageBlob'), blob(src.straight, 'straightBlob')]).then(function (b) {
-      return { page: b[0], straight: b[1], corners: src.corners, cols: src.cols, rows: src.rows, flosses: src.flosses };
+      return { page: b[0], straight: b[1], corners: src.corners, cols: src.cols, rows: src.rows, flosses: src.flosses, lineFlosses: src.lineFlosses || null };
     });
   }
   function canvasFromBlob(b) {
@@ -2876,7 +3044,7 @@ var ChartPdf = (function () {
           app.id = rec.id; app.name = rec.name; $('#name').value = rec.name;
           app.blank = rec.blank; app.frame = null; app.colorCount = rec.colorCount; app.confetti = rec.confetti;
           app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.maskPast = []; app.maskFuture = [];
-          app.source = { page: cv[0], straight: cv[1], pageBlob: rec.source.page, straightBlob: rec.source.straight, corners: rec.source.corners, cols: rec.source.cols, rows: rec.source.rows, flosses: rec.source.flosses };
+          app.source = { page: cv[0], straight: cv[1], pageBlob: rec.source.page, straightBlob: rec.source.straight, corners: rec.source.corners, cols: rec.source.cols, rows: rec.source.rows, flosses: rec.source.flosses, lineFlosses: rec.source.lineFlosses || null };
           app.pattern = E.deserialize(rec.pattern);
           var f1 = E.palette(app.pattern)[0]; app.floss = f1 ? f1.code : DEFAULT_FLOSS; app.selected = null; app.showPhoto = false;
           app.view = { zoom: 1, panX: 0, panY: 0 };
@@ -3006,7 +3174,7 @@ var ChartPdf = (function () {
   // saved: { corners, cols, rows, flosses } when re-reading an imported Pattern
   function startGrid(page, name, saved) {
     var data = page.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, page.width, page.height);
-    imp = { page: page, data: data, name: name, reread: !!saved, flosses: saved ? saved.flosses : null };
+    imp = { page: page, data: data, name: name, reread: !!saved, flosses: saved ? saved.flosses : null, lineFlosses: saved ? saved.lineFlosses : null };
     if (saved) { imp.corners = saved.corners.map(function (p) { return p.slice(); }); imp.cols = saved.cols; imp.rows = saved.rows; imp.typed = true; }
     else { imp.corners = E.guessChartCorners(data); var n = E.estimateGridCounts(data, imp.corners); imp.cols = n.cols; imp.rows = n.rows; imp.typed = false; }
     syncCounts(); openImporter(saved ? 'Re-read chart' : 'Import a chart'); impStep('grid');
@@ -3095,6 +3263,8 @@ var ChartPdf = (function () {
         imp.read = E.readChart(imp.data, { corners: imp.corners, cols: imp.cols, rows: imp.rows });
         var keep = imp.flosses && imp.flosses.length === imp.read.groups.length && !prev;
         imp.flosses = imp.read.groups.map(function (gr, k) { return keep ? imp.flosses[k] : gr.paper ? null : gr.guess; });
+        var keepL = imp.lineFlosses && imp.lineFlosses.length === imp.read.lineGroups.length && !prev;
+        imp.lineFlosses = imp.read.lineGroups.map(function (gr, k) { return keepL ? imp.lineFlosses[k] : gr.guess; });
         showThreads(); impBusy(''); impStep('threads');
       } catch (err) { impBusy(''); toast('Could not read the chart: ' + (err && err.message || 'unknown error')); }
     }, 40);
@@ -3118,55 +3288,74 @@ var ChartPdf = (function () {
     c.getContext('2d').putImageData(out, 0, 0);
     return c;
   }
+  // Thread rows: one per cell group ("c<k>") and one per Backstitch line color ("l<k>").
+  function rowInfo(row) {
+    var line = row.dataset.kind === 'line', k = +row.dataset.k;
+    return { line: line, k: k, gr: line ? imp.read.lineGroups[k] : imp.read.groups[k], list: line ? imp.lineFlosses : imp.flosses };
+  }
+  function lineCloseUp(gr) {
+    var c = document.createElement('canvas'); c.width = c.height = 44;
+    var cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, 44, 44);
+    cx.strokeStyle = gr.hex; cx.lineWidth = 6; cx.lineCap = 'round';
+    cx.beginPath(); cx.moveTo(8, 34); cx.lineTo(22, 12); cx.lineTo(36, 30); cx.stroke();
+    return c;
+  }
   function showThreads() {
     var list = $('#impThreads'); list.innerHTML = '';
-    imp.read.groups.forEach(function (gr, k) {
-      var code = imp.flosses[k], row = document.createElement('div');
-      row.className = 'thread' + (code == null ? ' bare' : ''); row.dataset.k = k;
+    function addRow(kind, gr, k, code) {
+      var row = document.createElement('div');
+      row.className = 'thread'; row.dataset.k = k; row.dataset.kind = kind;
       var printed = document.createElement('span'); printed.className = 'printed'; printed.style.background = gr.hex; printed.title = 'Printed color';
-      row.appendChild(cellCloseUp(gr)); row.appendChild(printed);
+      row.appendChild(kind === 'line' ? lineCloseUp(gr) : cellCloseUp(gr)); row.appendChild(printed);
       var f = document.createElement('div'); f.className = 'fields';
       f.innerHTML = '<div class="row"><input type="text" inputmode="text" autocomplete="off" aria-label="DMC number" placeholder="DMC" value="' + (code || '') + '">' +
         '<button class="secondary" data-act="imp-pick">Pick</button>' +
-        '<button class="secondary" data-act="imp-bare" aria-pressed="' + (code == null) + '">Bare fabric</button></div>' +
+        '<button class="secondary" data-act="imp-bare" aria-pressed="' + (code == null) + '">' + (kind === 'line' ? 'Skip' : 'Bare fabric') + '</button></div>' +
         '<div class="nm"></div>';
       row.appendChild(f); list.appendChild(row);
       threadName(row);
-    });
+    }
+    imp.read.groups.forEach(function (gr, k) { addRow('cell', gr, k, imp.flosses[k]); });
+    if (imp.read.lineGroups.length) {
+      var h = document.createElement('p'); h.className = 'muted'; h.textContent = 'Backstitch lines found on the chart:';
+      list.appendChild(h);
+      imp.read.lineGroups.forEach(function (gr, k) { addRow('line', gr, k, imp.lineFlosses[k]); });
+    }
   }
   function threadName(row) {
-    var k = +row.dataset.k, gr = imp.read.groups[k], code = imp.flosses[k], nm = $('.nm', row), fl = code && dmc(code);
+    var r = rowInfo(row), code = r.list[r.k], nm = $('.nm', row), fl = code && dmc(code);
     row.classList.toggle('bare', code == null);
     $('[data-act=imp-bare]', row).setAttribute('aria-pressed', String(code == null));
     nm.classList.toggle('bad', !fl && code != null);
-    nm.textContent = (code == null ? 'Left as bare fabric' : fl ? fl.name : 'Not a DMC number') + ' · ' + gr.count + ' cell' + (gr.count === 1 ? '' : 's');
+    var none = r.line ? 'Skipped' : 'Left as bare fabric', n = r.gr.count;
+    nm.textContent = (code == null ? none : fl ? fl.name : 'Not a DMC number') + ' · ' + n + (r.line ? ' line' : ' cell') + (n === 1 ? '' : 's');
   }
   $('#impThreads').addEventListener('input', function (ev) {
     var row = ev.target.closest('.thread'); if (!row) return;
-    var k = +row.dataset.k, t = ev.target.value.trim(), m = matchCode(t);
-    imp.flosses[k] = t ? (m || t) : null;
+    var r = rowInfo(row), t = ev.target.value.trim(), m = matchCode(t);
+    r.list[r.k] = t ? (m || t) : null;
     threadName(row);
   });
   $('#impThreads').addEventListener('click', function (ev) {
     var b = ev.target.closest('button'), row = ev.target.closest('.thread'); if (!b || !row) return;
     ev.stopPropagation();
-    var k = +row.dataset.k;
+    var r = rowInfo(row);
     if (b.dataset.act === 'imp-bare') {
-      imp.flosses[k] = imp.flosses[k] == null ? imp.read.groups[k].guess : null;
-      $('input', row).value = imp.flosses[k] || ''; threadName(row);
+      r.list[r.k] = r.list[r.k] == null ? r.gr.guess : null;
+      $('input', row).value = r.list[r.k] || ''; threadName(row);
     } else if (b.dataset.act === 'imp-pick') {
-      openPicker('Thread for this color', null, function (code) { imp.flosses[k] = code; $('input', row).value = code; threadName(row); });
+      openPicker(r.line ? 'Thread for these lines' : 'Thread for this color', null, function (code) { r.list[r.k] = code; $('input', row).value = code; threadName(row); });
     }
   });
   function makeImported() {
-    var bad = imp.flosses.filter(function (c) { return c != null && !dmc(c); });
+    var bad = imp.flosses.concat(imp.lineFlosses).filter(function (c) { return c != null && !dmc(c); });
     if (bad.length) { toast('Check the DMC numbers marked in red (or mark them Bare fabric).'); return; }
     if (imp.flosses.every(function (c) { return c == null; })) { toast('Every color is bare fabric, so there is nothing to stitch.'); return; }
     var keepId = imp.reread && app.source ? app.id : null, count = imp.reread ? app.blank.count : 14, finish = imp.reread ? app.blank.finish : 'framed';
-    var p = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, count: count, finish: finish });
+    var p = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, count: count, finish: finish });
     clearTimeout(saveTimer);
     app.id = keepId; app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.frame = null; app.maskPast = []; app.maskFuture = [];
-    app.source = { page: imp.page, straight: straighten(imp.read.grid), corners: imp.corners, cols: imp.cols, rows: imp.rows, flosses: imp.flosses.slice() };
+    app.source = { page: imp.page, straight: straighten(imp.read.grid), corners: imp.corners, cols: imp.cols, rows: imp.rows, flosses: imp.flosses.slice(), lineFlosses: imp.lineFlosses.slice() };
     app.blank = p.blank; app.pattern = p; app.showPhoto = false; app.selected = null;
     if (!imp.reread) { app.name = imp.name; $('#name').value = app.name; }
     var f0 = E.palette(p)[0]; app.floss = f0 ? f0.code : DEFAULT_FLOSS; app.tool = 'pencil';
@@ -3218,7 +3407,7 @@ var ChartPdf = (function () {
     if (t.dataset.floss) { app.selected = app.selected === t.dataset.floss ? null : t.dataset.floss; if (app.selected) app.floss = app.selected; renderPanels(); render(); return; }
     if (t.dataset.tool && t.closest('#tool')) { setTool(t.dataset.tool); return; }
     if (t.dataset.tool && t.closest('#edgeTool')) { app.edgeTool = t.dataset.tool; renderPanels(); render(); return; }
-    if (t.dataset.pick) { app.floss = t.dataset.pick; if (app.tab === 'edit' && app.tool !== 'pencil' && app.tool !== 'split') app.tool = 'pencil'; renderPanels(); return; }
+    if (t.dataset.pick) { app.floss = t.dataset.pick; if (app.tab === 'edit' && !/^(pencil|split|line)$/.test(app.tool)) app.tool = 'pencil'; renderPanels(); return; }
     if (t.dataset.diag) { app.splitDiag = t.dataset.diag; renderPanels(); return; }
     if (t.dataset.extra) {
       if (!app.pattern) return;

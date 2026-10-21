@@ -241,4 +241,25 @@ test('a page with no split cells reads none, even photographed at an angle', () 
   const { image, corners } = chart(cols, rows, sampleKind, { cell, warp });
   const read = E.readChart(image, { corners, cols, rows });
   assert.equal(read.splits.length, 0);
+  assert.equal(read.lines.length, 0, 'bold gridlines and cross symbols are not Backstitch');
+});
+
+test('heavy lines along grid corners are read as Backstitch, one unit line per cell side or diagonal', () => {
+  const { image, corners } = chart(12, 10, sampleKind, { cell: 18, lines: [[1, 5, 6, 5], [6, 5, 6, 8], [3, 6, 6, 9], [10, 2, 10, 4]] });
+  const read = E.readChart(image, { corners, cols: 12, rows: 10 });
+  const got = read.lines.map(l => [l.x0, l.y0, l.x1, l.y1].join(',')).sort();
+  const want = [];
+  for (let x = 1; x < 6; x++) want.push(`${x},5,${x + 1},5`);
+  for (let y = 5; y < 8; y++) want.push(`6,${y},6,${y + 1}`);
+  for (let k = 0; k < 3; k++) want.push(`${3 + k},${6 + k},${4 + k},${7 + k}`);
+  want.push('10,2,10,3', '10,3,10,4');
+  assert.deepEqual(got, want.sort());
+  assert.equal(read.lineGroups.length, 1);
+  assert.equal(read.lineGroups[0].guess, '310');
+  assert.ok(read.lines.every(l => l.group === 0));
+});
+
+test('stitch counts are not fooled by a shoulder beside the gridline repeat', () => {
+  const { image, corners } = chart(24, 20, (x, y) => sampleKind(x % 12, y % 10), { cell: 18 });
+  assert.deepEqual(E.estimateGridCounts(image, corners), { cols: 24, rows: 20 });
 });
