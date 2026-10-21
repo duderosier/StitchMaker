@@ -42,14 +42,26 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 - [ ] Dragging a corner dot shows the magnifier away from the finger; the purple lines can be lined up on the printed grid.
 - [ ] Counts are suggested; − / + and typing change them and the overlay follows.
 - [ ] Read chart lists the colors with close-ups; typing a DMC number shows its name; Pick and Bare fabric work.
+- [ ] A shop PDF fills "Numbers from the key" by itself and the colors get those numbers; typing numbers there re-guesses every color not set by hand.
+- [ ] A shop PDF that prints its symbols as text (most do) gets every color's DMC number from the key by symbol, even in black and white.
+- [ ] "Key in another photo" (and "Read the key on this page") read a photographed key: online the first time (about 7 MB), offline afterwards.
+- [ ] A chart with French knots (dots on grid corners) lists them under "French knots found on the chart"; they land as knots on the pattern.
+- [ ] A line color with one-square diagonals offers "Half stitches"; turned on, those diagonals over bare squares land as half stitches.
+- [ ] A black-and-white (symbols only) chart lists one row per symbol with its close-up and a note to match it to the key.
+- [ ] Add a chart page (Colors step) reads another page or photo; the place step shows the joined chart with the new page outlined, finds repeated columns or rows, and Start a new row puts the page under the first one.
 - [ ] The Pattern matches the chart (Original toggles the straightened chart over it); Fabric Count changes keep every stitch.
 - [ ] It reopens from My patterns; Re-read chart reopens the grid and warns before discarding edits.
+- [ ] A preset Blank smaller than the chart shrinks it to fit inside the shape; Crop keeps it full size instead; switching back and forth loses nothing.
 
 ## Chart and saving
 - [ ] Create Chart PDF opens the share sheet on iPhone (Save to Files, Print); downloads on Android.
 - [ ] The PDF is one Letter page; Black and white has symbols only; legend counts look right.
+- [ ] The Colors step and the Chart legend give strands for the Fabric Count and skeins per thread (about 1,500 crosses per skein on 14 count).
+- [ ] Colors step: Dithering On mixes threads across shading in a photo (specks cleanup turns off); Off brings the flat colors back.
 - [ ] Swipe the app away and reopen: the pattern is back exactly as left.
+- [ ] Stitch step: drag to mark stitches done (start on a done one to unmark), tap a thread to highlight it; progress and stitches left are right and survive reopening.
 - [ ] My patterns: open, rename and delete; New pattern starts fresh.
+- [ ] Save .oxs file shares or downloads an .oxs that opens in another cross stitch app; Import a chart opens an .oxs from another app.
 
 ## Layout
 - [ ] iPhone: one column; plum top pill; step chips under the preview; the drawer handle pulls the controls up; the bottom dock (Picture, Import chart, Draw, Save) is reachable with one thumb.
@@ -65,3 +77,7 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 - [ ] Import a chart with black outlines: the threads step lists "Backstitch lines" with 310; the pattern shows them as lines.
 - [ ] Edit → Line: tap a corner, tap more corners to chain, tap the last one to stop; tap a line to remove it.
 - [ ] Chart PDF prints the lines and a Backstitch section with lengths.
+
+## More stitch types (2026-10-21)
+- [ ] With Extra stitch types on, Half (with the Diagonal choice), Quarter (tap a corner of a square) and Knot (tap a corner or a square's middle) add stitches in the picked color; tapping again removes them.
+- [ ] The Chart PDF draws them, lists half and quarter stitches per thread and has a French knots section.

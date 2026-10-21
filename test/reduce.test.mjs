@@ -63,3 +63,20 @@ test('transparent (Background) cells are Unstitched and never use up a Palette s
   assert.equal(codesOf(p).length, 1);
   assert.notEqual(codesOf(p)[0], '310');
 });
+
+test('dithering mixes the chosen Flosses across a gradient instead of banding, and leaves flat areas flat', () => {
+  // 40 × 10: black, a black-to-white ramp, white.
+  const ramp = image(40, 10, x => { const v = x < 10 ? 0 : x >= 30 ? 255 : Math.round((x - 10) / 19 * 255); return [v, v, v]; });
+  const opts = { image: ramp, blank: { shape: 'custom', wIn: 40 / 14, hIn: 10 / 14, finish: 'framed', count: 14 }, colorCount: 2, confetti: 0 };
+  const flat = E.createPattern(opts), dithered = E.createPattern({ ...opts, dither: true });
+  const col = (p, x) => Array.from({ length: 10 }, (_, y) => E.cellAt(p, x, y).code);
+  const mixed = p => Array.from({ length: 40 }, (_, x) => new Set(col(p, x)).size > 1).filter(Boolean).length;
+  assert.equal(mixed(flat), 0, 'without dithering each column is one thread');
+  assert.ok(mixed(dithered) >= 10, `dithered ramp columns mix threads (${mixed(dithered)})`);
+  assert.deepEqual(new Set(col(dithered, 2)).size, 1, 'flat black stays flat');
+  assert.deepEqual(new Set(col(dithered, 37)).size, 1, 'flat white stays flat');
+  const dark = x => col(dithered, x).filter(c => c === '310').length;
+  assert.ok(dark(14) > dark(25), 'darker parts of the ramp get more of the dark thread');
+  assert.deepEqual(codesOf(dithered).sort(), codesOf(flat).sort(), 'the same Flosses, only arranged differently');
+  assert.equal(E.deserialize(JSON.parse(JSON.stringify(E.serialize(dithered)))).dither, true);
+});

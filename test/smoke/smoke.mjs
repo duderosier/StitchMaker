@@ -55,6 +55,13 @@ async function openPage(contextOptions) {
     const name = new URL(route.request().url()).pathname.split('/').pop();
     try { await route.fulfill({ body: await readFile(join(pdfjsDir, name)), contentType: 'text/javascript' }); } catch { await route.abort(); }
   });
+  // Likewise the key text reader (Tesseract script, core and English data) from jsDelivr.
+  await page.context().route(/^https:\/\/cdn\.jsdelivr\.net\/npm\/(tesseract\.js@[^/]+\/dist|tesseract\.js-core@[^/]+|@tesseract\.js-data\/eng@[^/]+)\//, async route => {
+    const u = new URL(route.request().url()).pathname, name = u.split('/').pop();
+    const dir = u.includes('tesseract.js-core') ? 'tesseract.js-core' : u.includes('tesseract.js-data') ? '@tesseract.js-data/eng/4.0.0_best_int' : 'tesseract.js/dist';
+    try { await route.fulfill({ body: await readFile(join(root, 'node_modules', dir, name)), contentType: /\.wasm$/.test(name) ? 'application/wasm' : name.endsWith('.gz') ? 'application/gzip' : 'text/javascript', headers: { 'access-control-allow-origin': '*' } }); }
+    catch { await route.abort(); }
+  });
   await page.route('https://cdn.jsdelivr.net/npm/heic2any@*/dist/*', async route => {
     const name = new URL(route.request().url()).pathname.split('/').pop();
     try { await route.fulfill({ body: await readFile(join(heicDir, name)), contentType: 'text/javascript' }); } catch { await route.abort(); }
@@ -121,6 +128,15 @@ try {
   const pdf = await readFile(await dl.path(), 'latin1');
   check(pdf.startsWith('%PDF-') && pdf.trimEnd().endsWith('%%EOF') && /\/Count 1\b/.test(pdf), 'Chart PDF is a one-page PDF');
 
+  await tab(page, 'colors');
+  const countsOf = async () => (await page.locator('#flossList .floss .ct').allTextContents()).join(' ');
+  const plainCounts = await countsOf();
+  await page.click('[data-dither="1"]'); await page.waitForTimeout(400);
+  const ditheredCounts = await countsOf();
+  check(await page.getAttribute('[data-dither="1"]', 'aria-pressed') === 'true' && await page.isDisabled('[data-confetti="1"]') && ditheredCounts !== plainCounts,
+    `Dithering On rebuilds the photo with mixed stitches (${plainCounts} → ${ditheredCounts})`);
+  await page.click('[data-dither="0"]'); await page.waitForTimeout(400);
+  check(await countsOf() === plainCounts, 'Dithering Off brings the plain colors back');
   // Saved and restored after reload.
   await page.waitForTimeout(900);
   await page.reload(); await page.waitForTimeout(900);
@@ -158,8 +174,41 @@ try {
   await page.mouse.click(b3.x + b3.width / 2 - 30, b3.y + b3.height / 2 - 40);
   await page.mouse.click(b3.x + b3.width / 2 + 30, b3.y + b3.height / 2 - 40);
   await page.waitForTimeout(100);
+  await page.click('[data-tool=half]');
+  await page.mouse.click(b3.x + b3.width / 2 - 60, b3.y + b3.height / 2 + 60);
+  await page.click('[data-tool=quarter]');
+  await page.mouse.click(b3.x + b3.width / 2 + 60, b3.y + b3.height / 2 + 60);
+  await page.click('[data-tool=knot]');
+  await page.mouse.click(b3.x + b3.width / 2, b3.y + b3.height / 2 + 90);
+  await page.waitForTimeout(100);
   await tab(page, 'chart');
   const chartTxt = await page.textContent('#chartSummary');
+  check(/1 half stitch\b/.test(chartTxt) && /1 quarter stitch\b/.test(chartTxt) && /1 French knot\b/.test(chartTxt), `the Half, Quarter and Knot tools add their stitches (${chartTxt})`);
+  await tab(page, 'stitch');
+  const b4 = await page.locator('#stage').boundingBox();
+  const mx = b4.x + b4.width / 2, my = b4.y + b4.height / 2;
+  await page.mouse.move(mx - 45, my - 24); await page.mouse.down(); // one zigzag stroke over the middle
+  for (let k = 0, dy = -24; dy <= 24; dy += 4, k++) {
+    await page.mouse.move(mx + (k % 2 ? -45 : 45), my + dy, { steps: 6 });
+    await page.mouse.move(mx + (k % 2 ? -45 : 45), my + dy + 4, { steps: 1 });
+  }
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const progressTxt = await page.textContent('#progressText');
+  check(/^\d+% done: [1-9]\d* of/.test(progressTxt), `dragging on the Stitch step marks stitches done (${progressTxt})`);
+  await page.click('#progressList .floss'); await page.waitForTimeout(100);
+  check(await page.getAttribute('#progressList .floss', 'aria-pressed') === 'true', 'tapping a thread on the Stitch step highlights it');
+  await page.click('#progressList .floss');
+  await tab(page, 'chart');
+  const [oxsDownload] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.click('[data-act=export-oxs]')]);
+  const oxsPath = await oxsDownload.path(), oxsText = await readFile(oxsPath, 'utf8');
+  check(/<chart>/.test(oxsText) && /objecttype="knot"/.test(oxsText) && /direction="[34]"/.test(oxsText), `Save .oxs file writes an .oxs chart (${oxsDownload.suggestedFilename()})`);
+  const sizeBefore = (await page.textContent('#readout')).split(' stitches')[0];
+  await page.setInputFiles('#chartFile', { name: 'back.oxs', mimeType: 'application/xml', buffer: Buffer.from(oxsText) });
+  await page.waitForTimeout(400);
+  await tab(page, 'chart');
+  const reopened = await page.textContent('#chartSummary');
+  check((await page.textContent('#readout')).startsWith(sizeBefore) && /1 half stitch\b/.test(reopened) && /1 French knot\b/.test(reopened), `an .oxs file opens as a pattern with its stitches (${reopened})`);
   check(/1 backstitch lines?/.test(chartTxt), `the Line tool stitches a Backstitch between two corners (${chartTxt})`);
   await tab(page, 'colors');
   const splitTxt = (await page.locator('#flossList .floss .ct').allTextContents()).join(' ');
@@ -192,6 +241,30 @@ try {
   await page.waitForSelector('.imp-step[data-step=grid].on');
   check(await page.inputValue('#impCols') === '24', 'Re-read chart reopens the saved grid');
   await page.click('#importer [data-act=close-dialog]');
+  await page.click('[data-act=add-chart-page]');
+  await page.setInputFiles('#chartFile', chartPng);
+  await page.waitForSelector('.imp-step[data-step=grid].on');
+  await page.waitForTimeout(300);
+  await page.click('[data-act=imp-read]');
+  await page.waitForSelector('.imp-step[data-step=threads].on', { timeout: 20000 });
+  await page.click('[data-act=imp-make]');
+  await page.waitForSelector('.imp-step[data-step=place].on');
+  const overlap = +(await page.inputValue('#impOverlap'));
+  await page.click('[data-act=imp-join]'); await page.waitForTimeout(200);
+  const joinedRead = await page.textContent('#readout');
+  check(joinedRead.startsWith(`${48 - overlap} × 20`), `Add a chart page joins a second page to the right (${overlap} repeated columns; ${joinedRead})`);
+  await tab(page, 'colors');
+  check(!(await page.isVisible('[data-act=reread-chart]')) && await page.isVisible('[data-act=add-chart-page]'), 'a joined chart offers Add a chart page but not Re-read');
+  await tab(page, 'blank');
+  const stitchCount = async () => (await page.locator('#flossList .floss .ct').allTextContents()).reduce((n, t) => n + (parseInt(t, 10) || 0), 0);
+  const fullCount = await stitchCount();
+  await page.click('[data-preset="round-1.5"]'); await page.waitForTimeout(150);
+  const shrunk = await stitchCount(), shrunkRead = await page.textContent('#readout');
+  check(shrunkRead.startsWith('27 × 27') && shrunk > 0 && shrunk < fullCount && await page.getAttribute('[data-fit=shrink]', 'aria-pressed') === 'true', `a smaller Blank shrinks an imported chart to fit (${fullCount} → ${shrunk})`);
+  await page.click('[data-fit=crop]'); await page.waitForTimeout(150);
+  const cropped = await stitchCount();
+  await page.click('[data-fit=shrink]'); await page.waitForTimeout(150);
+  check(cropped !== shrunk && await stitchCount() === shrunk, `Crop and Shrink to fit redo the Blank change (${cropped} cropped)`);
   await page.setInputFiles('#chartFile', chartPdf);
   await page.waitForSelector('#impPages button[data-page="2"]', { timeout: 20000 }).catch(() => {});
   const hasPages = await page.locator('#impPages button').count();
@@ -203,6 +276,57 @@ try {
     check(await page.inputValue('#impCols') === '24', `PDF page 2 shows the chart grid (${await page.inputValue('#impCols')} across)`);
   }
   await page.click('#importer [data-act=close-dialog]');
+  await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-knots.png'));
+  await page.waitForSelector('.imp-step[data-step=grid].on');
+  await page.waitForTimeout(300);
+  await page.click('[data-act=imp-read]');
+  await page.waitForSelector('.imp-step[data-step=threads].on', { timeout: 20000 });
+  const knotRow = await page.$$eval('#impThreads .thread[data-kind=knot] .nm', els => els.map(e => e.textContent).join(' | '));
+  check(/5 knots/.test(knotRow), `French knots on a chart are found for confirming (${knotRow})`);
+  await page.click('#impThreads .thread[data-kind=line] [data-act=imp-half]');
+  await page.click('[data-act=imp-make]'); await page.waitForTimeout(300);
+  await tab(page, 'chart');
+  const halfTxt = await page.textContent('#chartSummary');
+  check(/2 half stitches/.test(halfTxt) && /5 French knots/.test(halfTxt), `chart lines marked as half stitches import as half stitches (${halfTxt})`);
+  await tab(page, 'colors');
+  await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-bw.png'));
+  await page.waitForSelector('.imp-step[data-step=grid].on');
+  await page.waitForTimeout(300);
+  await page.click('[data-act=imp-read]');
+  await page.waitForSelector('.imp-step[data-step=threads].on', { timeout: 20000 });
+  const bwRows = await page.$$eval('#impThreads .thread input', els => els.map(e => e.value));
+  check(bwRows.length === 6 && new Set(bwRows.filter(Boolean)).size === 5 && /no colors/.test(await page.textContent('#impThreads')),
+    `a black-and-white chart reads one row per symbol, each starting on its own thread (${bwRows.join(' ')})`);
+  await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-key.pdf'));
+  await page.waitForSelector('.imp-step[data-step=grid].on', { timeout: 20000 });
+  await page.waitForTimeout(300);
+  await page.click('[data-act=imp-read]');
+  await page.waitForSelector('.imp-step[data-step=threads].on', { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('#impKey').value, null, { timeout: 10000 }).catch(() => {});
+  const keyNums = await page.inputValue('#impKey');
+  const keyed = await page.$$eval('#impThreads .thread input', els => els.map(e => e.value).join(' '));
+  check(keyNums === '745, 3752, Blanc' && keyed.trim() === '745 3752 Blanc', `a PDF's key fills in the DMC numbers (${keyNums} → ${keyed.trim()})`);
+  await page.fill('#impKey', '727, 827'); await page.waitForTimeout(500);
+  const retyped = await page.$$eval('#impThreads .thread input', els => els.map(e => e.value).join(' '));
+  check(retyped.startsWith('727 827'), `typed key numbers change the guesses (${retyped.trim()})`);
+  await page.fill('#impKey', ''); await page.waitForTimeout(400);
+  await page.click('[data-act=key-ocr-photo]');
+  await page.setInputFiles('#keyFile', join(root, 'test/smoke/fixtures/key-photo.jpg'));
+  await page.waitForFunction(() => document.querySelector('#impKey').value, null, { timeout: 90000 }).catch(() => {});
+  const ocrKey = await page.inputValue('#impKey');
+  check(ocrKey === '745, 3752, Blanc', `the key is read from a photo with the on-demand text reader (${ocrKey})`);
+  await page.click('#importer [data-act=close-dialog]');
+  await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-symbols.pdf'));
+  await page.waitForSelector('.imp-step[data-step=grid].on', { timeout: 20000 });
+  await page.waitForTimeout(300);
+  await page.click('[data-act=imp-read]');
+  await page.waitForSelector('.imp-step[data-step=threads].on', { timeout: 20000 });
+  await page.waitForFunction(() => /by their symbols/.test(document.querySelector('#impKeyNote').textContent), null, { timeout: 10000 }).catch(() => {});
+  const bySymbol = (await page.$$eval('#impThreads .thread input', els => els.map(e => e.value))).filter(Boolean).sort().join(' ');
+  check(bySymbol === '310 3752 745', `a PDF printing its symbols as text matches each symbol to the key (${bySymbol})`);
+  await page.fill('#impKey', '727, 827'); await page.waitForTimeout(500);
+  const kept = (await page.$$eval('#impThreads .thread input', els => els.map(e => e.value))).filter(Boolean).sort().join(' ');
+  check(kept === '310 3752 745', `typed key numbers leave symbol matches alone (${kept})`);
   await page.evaluate(() => { document.querySelector('#impCols').value = ''; });
   await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart.heic'));
   await page.waitForFunction(() => !document.querySelector('#importer').open || (document.querySelector('#impBusy').hidden && document.querySelector('#impCols').value), null, { timeout: 30000 }).catch(() => {});

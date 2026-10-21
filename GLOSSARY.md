@@ -72,6 +72,18 @@ _Avoid_: Half stitch, half cell, fractional stitch
 A straight line of thread from one grid corner to another (along a cell edge or across a diagonal), with its own Floss, which does not count toward the Color Count.
 _Avoid_: Outline, line, stroke
 
+**Half Stitch**:
+One diagonal leg of a cross, corner to corner across a cell, in one Floss; the rest of the cell is Unstitched.
+_Avoid_: Half cross, tent stitch, Split Cell (which has two Flosses)
+
+**Quarter Stitch**:
+One leg from a cell's corner to its centre, in one Floss; a cell can hold up to four.
+_Avoid_: Petite stitch, quarter cell
+
+**French Knot**:
+A knot placed on a grid corner or a cell's centre with its own Floss, which, like a Backstitch, does not count toward the Color Count.
+_Avoid_: Dot, bead
+
 **Edge Stitch**:
 One stitch wrapping the cut edge of an Overcast Blank (its Cut Line or an inside Ring Hole); each has its own Floss, which does not count toward the Color Count.
 _Avoid_: Whipstitch, border stitch, binding

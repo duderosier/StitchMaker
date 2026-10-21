@@ -8,7 +8,7 @@ const E = loadEngine();
 // thin grey gridlines with bold lines every 10, all on a page with a margin. kind(x, y) returns
 // null for plain paper, or { tint: [r, g, b], symbol: 'x' | 'dot' | 'tri' }.
 const YELLOW = [246, 238, 160], BLUE = [190, 214, 222], WHITE = [255, 255, 255];
-function chart(cols, rows, kind, { cell = 14, margin = 30, warp = null, lines = [] } = {}) {
+function chart(cols, rows, kind, { cell = 14, margin = 30, warp = null, lines = [], knots = [], knotColor = [150, 30, 40], knotR = 0.3 } = {}) {
   const W = cols * cell + 2 * margin, H = rows * cell + 2 * margin;
   const data = new Uint8ClampedArray(W * H * 4).fill(255);
   // paint in chart space, map through optional warp (chart → page)
@@ -31,6 +31,8 @@ function chart(cols, rows, kind, { cell = 14, margin = 30, warp = null, lines = 
     if (k && k.symbol) {
       const a = iu - S / 2, b = iv - S / 2, r = S * 0.28;
       const on = k.symbol === 'x' ? (Math.abs(Math.abs(a) - Math.abs(b)) < 1.2 && Math.abs(a) < r)
+        : k.symbol === 'plus' ? ((Math.abs(a) < 1.2 && Math.abs(b) < r) || (Math.abs(b) < 1.2 && Math.abs(a) < r))
+        : k.symbol === 'bar' ? (Math.abs(a) < r && Math.abs(b) < 1.8)
         : k.symbol === 'dot' ? (a * a + b * b < (S * 0.12) ** 2)
         : (b > -r && b < r && Math.abs(a) < (b + r) / 2 && b > r - 2.2) || (b > -r && b < r && Math.abs(Math.abs(a) - (b + r) / 2) < 1.1);
       if (on) rgb = [40, 40, 50];
@@ -54,6 +56,11 @@ function chart(cols, rows, kind, { cell = 14, margin = 30, warp = null, lines = 
       const u = (x0 + (x1 - x0) * t / n) * S, v = (y0 + (y1 - y0) * t / n) * S;
       for (let d = -1.5; d <= 1.5; d += 0.5) { put(u + d, v, [10, 10, 10]); put(u, v + d, [10, 10, 10]); }
     }
+  }
+  // French knots: filled dots centred on grid corners (chart cell units)
+  for (const [kx, ky] of knots) {
+    const r = knotR * S;
+    for (let dv = -r; dv <= r; dv += 0.5) for (let du = -r; du <= r; du += 0.5) if (du * du + dv * dv <= r * r) put(kx * S + du, ky * S + dv, knotColor);
   }
   const corners = [page(0, 0), page(cols * S, 0), page(cols * S, rows * S), page(0, rows * S)];
   return { image: { width: W, height: H, data }, corners };
@@ -262,4 +269,88 @@ test('heavy lines along grid corners are read as Backstitch, one unit line per c
 test('stitch counts are not fooled by a shoulder beside the gridline repeat', () => {
   const { image, corners } = chart(24, 20, (x, y) => sampleKind(x % 12, y % 10), { cell: 18 });
   assert.deepEqual(E.estimateGridCounts(image, corners), { cols: 24, rows: 20 });
+});
+
+// A black-and-white chart: every stitched cell is white paper with a black symbol; only the symbols tell threads apart.
+function symbolKind(x, y) {
+  if (y < 3) return { tint: WHITE, symbol: x < 6 ? 'x' : 'plus' };
+  if (y < 6) return { tint: WHITE, symbol: x < 6 ? 'tri' : 'bar' };
+  if (y < 8 && x >= 2 && x < 10) return { tint: WHITE, symbol: 'dot' };
+  return null;
+}
+function checkSymbols(read) {
+  const x = groupAt(read, 0, 0), plus = groupAt(read, 11, 0), tri = groupAt(read, 0, 4), bar = groupAt(read, 11, 4), dot = groupAt(read, 5, 6), paper = groupAt(read, 0, 9);
+  assert.equal(new Set([x, plus, tri, bar, dot, paper]).size, 6, 'one group per symbol, plus paper');
+  assert.equal(read.groups.length, 6);
+  assert.deepEqual([x.count, plus.count, tri.count, bar.count, dot.count, paper.count], [18, 18, 18, 18, 16, 32]);
+  assert.equal(paper.paper, true);
+  assert.equal(read.symbols, true, 'the reading says it grouped by symbol');
+}
+
+test('a black-and-white chart groups cells by the shape of their symbol', () => {
+  const { image, corners } = chart(12, 10, symbolKind);
+  checkSymbols(E.readChart(image, { corners, cols: 12, rows: 10 }));
+});
+
+test('symbols are told apart on an angled photo too', () => {
+  const g = 0.00012, h = -0.00008, cell = 16;
+  const warp = (u, v) => { const w = g * u + h * v + 1; return [(1.02 * u + 0.08 * v + 60) / w, (-0.05 * u + 0.98 * v + 50) / w]; };
+  const { image, corners } = chart(12, 10, symbolKind, { cell, margin: 80, warp });
+  checkSymbols(E.readChart(image, { corners, cols: 12, rows: 10 }));
+});
+
+test('colored charts are still grouped by color, not split by symbol', () => {
+  const { image, corners } = chart(12, 10, sampleKind);
+  const read = E.readChart(image, { corners, cols: 12, rows: 10 });
+  assert.equal(read.symbols, false);
+  assert.equal(read.groups.length, 4);
+});
+
+const KNOTS = [[2, 2], [7, 5], [10, 9], [4, 8]];
+const knotSet = read => read.knots.map(k => [k.x, k.y]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+
+test('French knots printed as dots on grid corners are read, with their color, and nothing else is', () => {
+  const { image, corners } = chart(12, 10, sampleKind, { knots: KNOTS });
+  const read = E.readChart(image, { corners, cols: 12, rows: 10 });
+  assert.deepEqual(knotSet(read), [[2, 2], [4, 8], [7, 5], [10, 9]]);
+  assert.equal(read.knotGroups.length, 1);
+  assert.ok(read.knotGroups[0].count === 4 && /^#9/.test(read.knotGroups[0].hex), read.knotGroups[0].hex);
+  assert.equal(groupAt(read, 2, 2).count, 24, 'a knot on a corner does not change the cells around it');
+});
+
+test('dot symbols, bold gridlines and Backstitch corners are not knots, even photographed at an angle', () => {
+  const clean = chart(12, 10, sampleKind, { lines: [[1, 1, 5, 1], [5, 1, 5, 4], [6, 6, 8, 8], [6, 8, 8, 6]] });
+  assert.deepEqual(E.readChart(clean.image, { corners: clean.corners, cols: 12, rows: 10 }).knots, []);
+  const g = 0.00012, h = -0.00008;
+  const warp = (u, v) => { const w = g * u + h * v + 1; return [(1.02 * u + 0.08 * v + 60) / w, (-0.05 * u + 0.98 * v + 50) / w]; };
+  const angled = chart(12, 10, sampleKind, { cell: 16, margin: 80, warp, knots: KNOTS, knotColor: [30, 60, 140] });
+  assert.deepEqual(knotSet(E.readChart(angled.image, { corners: angled.corners, cols: 12, rows: 10 })), [[2, 2], [4, 8], [7, 5], [10, 9]]);
+});
+
+test('read knots become French knots with the confirmed Floss, or are skipped', () => {
+  const read = { cols: 2, rows: 1, cells: [0, 1], groups: [{}, { paper: true }], splits: [], lines: [], knots: [{ x: 1, y: 1, group: 0 }, { x: 2, y: 0, group: 1 }] };
+  const p = E.createImportedPattern({ read, flosses: ['310', null], knotFlosses: ['321', null] });
+  assert.deepEqual(E.knots(p).map(k => [k.x, k.y, k.code]), [[1, 1, '321']]);
+  assert.equal(p.extraStitches, true);
+});
+
+test('a line color marked as half stitches turns its one-square diagonals over bare squares into Half Stitches', () => {
+  const read = { cols: 3, rows: 2, cells: [0, 1, 1, 1, 1, 1], groups: [{}, { paper: true }], splits: [],
+    lines: [{ x0: 1, y0: 1, x1: 2, y1: 0, group: 0 }, { x0: 2, y0: 0, x1: 3, y1: 1, group: 0 }, { x0: 0, y0: 0, x1: 1, y1: 1, group: 0 },
+      { x0: 0, y0: 2, x1: 3, y1: 2, group: 0 }, { x0: 1, y0: 1, x1: 2, y1: 2, group: 1 }] };
+  const p = E.createImportedPattern({ read, flosses: ['310', null], lineFlosses: ['321', '699'], lineHalf: [true, false] });
+  assert.deepEqual(E.halfList(p), [{ x: 1, y: 0, diagonal: '/', code: '321' }, { x: 2, y: 0, diagonal: '\\', code: '321' }]);
+  assert.deepEqual(E.backstitches(p).map(b => [b.x0, b.y0, b.x1, b.y1, b.code]),
+    [[0, 0, 1, 1, '321'], [0, 2, 3, 2, '321'], [1, 1, 2, 2, '699']], 'over a stitched square, along a side, or another color: still Backstitch');
+  assert.ok(E.palette(p).some(f => f.code === '321'), 'half stitches use Palette Flosses');
+});
+
+test('bare squares crossed by a diagonal line stay bare fabric; squares with a symbol under the line do not', () => {
+  const kind = (x, y) => (y < 4 ? sampleKind(x, y) : y === 5 && x === 6 ? { tint: WHITE, symbol: 'x' } : null);
+  const { image, corners } = chart(12, 10, kind, { lines: [[1, 9, 2, 8], [2, 8, 3, 9], [6, 6, 7, 5]] });
+  const read = E.readChart(image, { corners, cols: 12, rows: 10 });
+  assert.equal(groupAt(read, 1, 8).paper, true);
+  assert.equal(groupAt(read, 2, 8).paper, true);
+  assert.equal(groupAt(read, 6, 5).paper, false, 'a crossed-symbol square keeps its Stitch');
+  assert.equal(read.lines.filter(l => Math.abs(l.x1 - l.x0) === 1 && Math.abs(l.y1 - l.y0) === 1).length, 3);
 });
