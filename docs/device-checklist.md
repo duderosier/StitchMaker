@@ -42,6 +42,7 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 - [ ] Dragging a corner dot shows the magnifier away from the finger; the purple lines can be lined up on the printed grid.
 - [ ] Counts are suggested; − / + and typing change them and the overlay follows.
 - [ ] Read chart lists the colors with close-ups; typing a DMC number shows its name; Pick and Bare fabric work.
+- [ ] A shop PDF fills "Numbers from the key" by itself and the colors get those numbers; typing numbers there re-guesses every color not set by hand.
 - [ ] The Pattern matches the chart (Original toggles the straightened chart over it); Fabric Count changes keep every stitch.
 - [ ] It reopens from My patterns; Re-read chart reopens the grid and warns before discarding edits.
 - [ ] A preset Blank smaller than the chart shrinks it to fit inside the shape; Crop keeps it full size instead; switching back and forth loses nothing.

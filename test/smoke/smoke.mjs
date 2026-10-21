@@ -213,6 +213,18 @@ try {
     check(await page.inputValue('#impCols') === '24', `PDF page 2 shows the chart grid (${await page.inputValue('#impCols')} across)`);
   }
   await page.click('#importer [data-act=close-dialog]');
+  await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-key.pdf'));
+  await page.waitForSelector('.imp-step[data-step=grid].on', { timeout: 20000 });
+  await page.waitForTimeout(300);
+  await page.click('[data-act=imp-read]');
+  await page.waitForSelector('.imp-step[data-step=threads].on', { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('#impKey').value, null, { timeout: 10000 }).catch(() => {});
+  const keyNums = await page.inputValue('#impKey');
+  const keyed = await page.$$eval('#impThreads .thread input', els => els.map(e => e.value).join(' '));
+  check(keyNums === '745, 3752, Blanc' && keyed.trim() === '745 3752 Blanc', `a PDF's key fills in the DMC numbers (${keyNums} → ${keyed.trim()})`);
+  await page.fill('#impKey', '727, 827'); await page.waitForTimeout(500);
+  const retyped = await page.$$eval('#impThreads .thread input', els => els.map(e => e.value).join(' '));
+  check(retyped.startsWith('727 827'), `typed key numbers change the guesses (${retyped.trim()})`);
   await page.evaluate(() => { document.querySelector('#impCols').value = ''; });
   await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart.heic'));
   await page.waitForFunction(() => !document.querySelector('#importer').open || (document.querySelector('#impBusy').hidden && document.querySelector('#impCols').value), null, { timeout: 30000 }).catch(() => {});

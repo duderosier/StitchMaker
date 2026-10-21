@@ -337,6 +337,9 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
 .pages button { border: 0; border-radius: var(--r-m); background: #fff; padding: 8px; font-size: 13px; color: var(--ink-soft); box-shadow: inset 0 0 0 2px var(--line); }
 .pages img { display: block; width: 100%; height: auto; margin-bottom: 4px; border-radius: 10px; }
 .threads { display: grid; gap: 8px; }
+.keyrow { display: grid; gap: 4px; margin-bottom: 10px; }
+.keyrow input { width: 100%; height: 44px; }
+.keyrow p { margin: 0; }
 .thread { display: grid; grid-template-columns: 46px 46px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px; border-radius: var(--r-m); background: #fff; }
 .thread canvas, .thread .printed { width: 46px; height: 46px; border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(74, 29, 94, .16); image-rendering: pixelated; }
 .thread .fields { display: grid; gap: 4px; min-width: 0; }
@@ -621,7 +624,12 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
     </div>
     <div class="imp-step" data-step="threads">
       <p class="muted" style="padding:0 14px">Type each color's DMC number from the chart's key. Give two colors the same number to join them.</p>
-      <div class="dlg-body"><div class="threads" id="impThreads"></div></div>
+      <div class="dlg-body">
+        <div class="keyrow"><label for="impKey">Numbers from the key</label>
+          <input type="text" id="impKey" autocomplete="off" placeholder="e.g. 310, 321, 3865, Blanc">
+          <p class="muted" id="impKeyNote">List the key's DMC numbers and each color gets the closest one.</p></div>
+        <div class="threads" id="impThreads"></div>
+      </div>
       <div class="imp-foot actions">
         <button class="secondary" data-act="imp-back">Back to grid</button>
         <button class="primary" data-act="imp-make">Make pattern</button>
@@ -1757,6 +1765,49 @@ var PatternEngine = (function () {
       })
     };
   }
+  // The DMC numbers listed in a chart key's text (typed by the person or taken from a PDF), once each.
+  // Sizes ("120 x 80"), counts ("14 count"), page numbers and lone digits are left out.
+  var NOT_THREAD_AFTER = /^(count|ct|stitches|stitch|st|inches|inch|in|cm|mm|strands|strand|colors|colours|pages|of)$/i;
+  var NOT_THREAD_BEFORE = /^(page|size|p)$/i;
+  // With skipNumberLines (text from a PDF), lines with no words are left out too: gridline rulers ("10 20 30").
+  function keyCodesFromText(text, opts) {
+    var toks = [], re = /[A-Za-z0-9]+|×/g, m, out = [];
+    text = String(text || '');
+    if (opts && opts.skipNumberLines) text = text.split('\n').filter(function (l) { return /[A-Za-z]{2}/.test(l); }).join('\n');
+    while ((m = re.exec(text))) toks.push({ t: m[0], at: m.index, end: m.index + m[0].length });
+    function isNum(k) { return k >= 0 && k < toks.length && /^\d+$/.test(toks[k].t); }
+    function isX(k) { return k >= 0 && k < toks.length && /^(x|×)$/i.test(toks[k].t); }
+    toks.forEach(function (tk, k) {
+      var t = tk.t, code = null;
+      if (/^\d+$/.test(t)) {
+        if (t.length < 2) return;
+        if ((isX(k - 1) && isNum(k - 2)) || (isX(k + 1) && isNum(k + 2))) return;
+        if (k + 1 < toks.length && NOT_THREAD_AFTER.test(toks[k + 1].t)) return;
+        if (k > 0 && NOT_THREAD_BEFORE.test(toks[k - 1].t)) return;
+        var after = text.slice(tk.end, tk.end + 2), before = text.slice(Math.max(0, tk.at - 2), tk.at);
+        if (/^[.,]\d/.test(after) || /\d[.,]$/.test(before) || /^["”']/.test(after) || /^\s*%/.test(after)) return;
+        code = DMC_BY_CODE[t] ? t : null;
+      } else {
+        var cap = t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+        code = DMC_BY_CODE[t.toUpperCase()] ? t.toUpperCase() : DMC_BY_CODE[cap] && !/^\d/.test(cap) ? cap : null;
+      }
+      if (code && out.indexOf(code) < 0) out.push(code);
+    });
+    return out;
+  }
+  // DMC guesses for a reading's groups from a key's numbers: closest color pairs first, each number used once
+  // while numbers last, then the nearest listed one. Bare fabric (paper) groups get null.
+  function keyGuesses(groups, codes) {
+    var out = groups.map(function () { return null; });
+    if (!codes.length) return out;
+    var labs = groups.map(function (g) { return rgbToLab(g.rgb); }), pairs = [];
+    groups.forEach(function (g, gi) { if (!g.paper) codes.forEach(function (c) { pairs.push({ g: gi, c: c, d: dE2000(labs[gi], DMC_BY_CODE[c].lab) }); }); });
+    pairs.sort(function (a, b) { return a.d - b.d; });
+    var used = {};
+    pairs.forEach(function (p) { if (out[p.g] == null && !used[p.c]) { out[p.g] = p.c; used[p.c] = 1; } });
+    pairs.forEach(function (p) { if (out[p.g] == null) out[p.g] = p.c; });
+    return out;
+  }
   // The custom Blank that holds a cols × rows chart cell for cell at a Fabric Count.
   function chartBlank(cols, rows, count, finish) {
     return { shape: 'custom', wIn: cols / count, hIn: rows / count, count: count, finish: finish || 'framed' };
@@ -2018,7 +2069,7 @@ var PatternEngine = (function () {
     serialize: serialize, deserialize: deserialize,
     createBlankPattern: createBlankPattern, reshape: reshape, shrinkToFit: shrinkToFit, fitsBlank: fitsBlank, rebase: rebase,
     readChart: readChart, estimateGridCounts: estimateGridCounts, fitChartGrid: fitChartGrid, gridPoint: gridPoint, cornerGrid: cornerGrid, guessChartCorners: guessChartCorners,
-    createImportedPattern: createImportedPattern, chartBlank: chartBlank,
+    createImportedPattern: createImportedPattern, chartBlank: chartBlank, keyCodesFromText: keyCodesFromText, keyGuesses: keyGuesses,
     blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette,
     splitAt: splitAt, splitList: splitList, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, withFit: withFit, splitTriangles: splitTriangles, splitSide: splitSide
   };
@@ -3118,7 +3169,7 @@ var ChartPdf = (function () {
       return new Promise(function (r) { c.toBlob(r, 'image/jpeg', 0.88); }).then(function (b) { src[key] = b; return b; });
     }
     return Promise.all([blob(src.page, 'pageBlob'), blob(src.straight, 'straightBlob')]).then(function (b) {
-      return { page: b[0], straight: b[1], corners: src.corners, cols: src.cols, rows: src.rows, flosses: src.flosses, lineFlosses: src.lineFlosses || null };
+      return { page: b[0], straight: b[1], corners: src.corners, cols: src.cols, rows: src.rows, flosses: src.flosses, lineFlosses: src.lineFlosses || null, key: src.key || '' };
     });
   }
   function canvasFromBlob(b) {
@@ -3132,7 +3183,7 @@ var ChartPdf = (function () {
           app.id = rec.id; app.name = rec.name; $('#name').value = rec.name;
           app.blank = rec.blank; app.frame = null; app.colorCount = rec.colorCount; app.confetti = rec.confetti;
           app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.maskPast = []; app.maskFuture = [];
-          app.source = { page: cv[0], straight: cv[1], pageBlob: rec.source.page, straightBlob: rec.source.straight, corners: rec.source.corners, cols: rec.source.cols, rows: rec.source.rows, flosses: rec.source.flosses, lineFlosses: rec.source.lineFlosses || null };
+          app.source = { page: cv[0], straight: cv[1], pageBlob: rec.source.page, straightBlob: rec.source.straight, corners: rec.source.corners, cols: rec.source.cols, rows: rec.source.rows, flosses: rec.source.flosses, lineFlosses: rec.source.lineFlosses || null, key: rec.source.key || '' };
           app.pattern = E.deserialize(rec.pattern);
           var f1 = E.palette(app.pattern)[0]; app.floss = f1 ? f1.code : DEFAULT_FLOSS; app.selected = null; app.showPhoto = false;
           app.view = { zoom: 1, panX: 0, panY: 0 };
@@ -3225,12 +3276,24 @@ var ChartPdf = (function () {
       return pg.render({ canvasContext: cx, viewport: vp }).promise.then(function () { return c; });
     });
   }
+  // A PDF's own text often includes its key: its DMC numbers, read once per PDF while the person places the grid.
+  var pdfKey = null; // Promise of 'code, code, …' for the PDF being imported, or null
+  function readPdfKey(pdf) {
+    var n = Math.min(pdf.numPages, 40), chain = Promise.resolve(''), text = '';
+    for (var k = 1; k <= n; k++) (function (k) {
+      chain = chain.then(function () { return pdf.getPage(k); }).then(function (pg) { return pg.getTextContent(); }).then(function (tc) {
+        text += tc.items.map(function (it) { return it.str + (it.hasEOL ? '\n' : ''); }).join('') + '\n';
+      });
+    })(k);
+    return chain.then(function () { return E.keyCodesFromText(text, { skipNumberLines: true }).join(', '); }).catch(function () { return ''; });
+  }
   function importFile(file) {
     var name = (file.name || 'Imported chart').replace(/\.[^.]+$/, '').slice(0, 40) || 'Imported chart';
     openImporter();
     if (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name || '')) {
       impStep('pages'); $('#impPages').innerHTML = ''; impBusy('Opening the PDF…');
       loadPdfJs().then(function (lib) { return file.arrayBuffer().then(function (buf) { return lib.getDocument({ data: buf }).promise; }); }).then(function (pdf) {
+        pdfKey = readPdfKey(pdf);
         if (pdf.numPages === 1) return renderPdfPage(pdf, 1, MAX_SOURCE).then(function (c) { impBusy(''); startGrid(c, name); });
         var n = Math.min(pdf.numPages, 40), chain = Promise.resolve();
         impBusy('');
@@ -3245,6 +3308,7 @@ var ChartPdf = (function () {
       }).catch(function (err) { impBusy(''); importer.close(); toast('Could not open that PDF: ' + (err && err.message || 'unknown error') + '.'); });
       return;
     }
+    pdfKey = null;
     impBusy('Opening the picture…'); impStep('grid');
     openPicture(file, function () { impBusy('Converting the HEIC photo…'); }).then(function (img) {
       var sc = Math.min(1, MAX_SOURCE / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
@@ -3262,7 +3326,8 @@ var ChartPdf = (function () {
   // saved: { corners, cols, rows, flosses } when re-reading an imported Pattern
   function startGrid(page, name, saved) {
     var data = page.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, page.width, page.height);
-    imp = { page: page, data: data, name: name, reread: !!saved, flosses: saved ? saved.flosses : null, lineFlosses: saved ? saved.lineFlosses : null };
+    imp = { page: page, data: data, name: name, reread: !!saved, flosses: saved ? saved.flosses : null, lineFlosses: saved ? saved.lineFlosses : null,
+      key: saved ? saved.key || '' : '', keyFrom: saved ? null : pdfKey, manual: {} };
     if (saved) { imp.corners = saved.corners.map(function (p) { return p.slice(); }); imp.cols = saved.cols; imp.rows = saved.rows; imp.typed = true; }
     else { imp.corners = E.guessChartCorners(data); var n = E.estimateGridCounts(data, imp.corners); imp.cols = n.cols; imp.rows = n.rows; imp.typed = false; }
     syncCounts(); openImporter(saved ? 'Re-read chart' : 'Import a chart'); impStep('grid');
@@ -3353,10 +3418,32 @@ var ChartPdf = (function () {
         imp.flosses = imp.read.groups.map(function (gr, k) { return keep ? imp.flosses[k] : gr.paper ? null : gr.guess; });
         var keepL = imp.lineFlosses && imp.lineFlosses.length === imp.read.lineGroups.length && !prev;
         imp.lineFlosses = imp.read.lineGroups.map(function (gr, k) { return keepL ? imp.lineFlosses[k] : gr.guess; });
+        imp.manual = {};
+        $('#impKey').value = imp.key;
+        if (imp.key && !keep) applyKey();
         showThreads(); impBusy(''); impStep('threads');
+        var reading = imp;
+        if (imp.keyFrom && !imp.key) imp.keyFrom.then(function (text) {
+          if (imp !== reading || !text || $('#impKey').value.trim()) return;
+          $('#impKey').value = imp.key = text; applyKey(); showThreads();
+        });
       } catch (err) { impBusy(''); toast('Could not read the chart: ' + (err && err.message || 'unknown error')); }
     }, 40);
   }
+  // Guesses from the key's numbers for every color the person hasn't set by hand.
+  function applyKey() {
+    var codes = E.keyCodesFromText(imp.key);
+    $('#impKeyNote').textContent = codes.length ? 'Using ' + codes.length + ' number' + (codes.length === 1 ? '' : 's') + ' from the key: ' + codes.join(', ') + '.' : 'List the key\'s DMC numbers and each color gets the closest one.';
+    if (!codes.length || !imp.read) return;
+    var g = E.keyGuesses(imp.read.groups, codes), gl = E.keyGuesses(imp.read.lineGroups, codes);
+    imp.read.groups.forEach(function (gr, k) { if (!imp.manual['cell' + k] && !gr.paper) imp.flosses[k] = g[k]; });
+    imp.read.lineGroups.forEach(function (gr, k) { if (!imp.manual['line' + k]) imp.lineFlosses[k] = gl[k]; });
+  }
+  var keyTimer = null;
+  $('#impKey').addEventListener('input', function () {
+    var v = this.value; clearTimeout(keyTimer);
+    keyTimer = setTimeout(function () { if (!imp || !imp.read) return; imp.key = v; applyKey(); showThreads(); }, 300);
+  });
   function matchCode(t) {
     t = String(t || '').trim().replace(/^dmc\s*/i, '');
     if (!t) return null;
@@ -3421,13 +3508,14 @@ var ChartPdf = (function () {
   $('#impThreads').addEventListener('input', function (ev) {
     var row = ev.target.closest('.thread'); if (!row) return;
     var r = rowInfo(row), t = ev.target.value.trim(), m = matchCode(t);
-    r.list[r.k] = t ? (m || t) : null;
+    r.list[r.k] = t ? (m || t) : null; imp.manual[row.dataset.kind + r.k] = true;
     threadName(row);
   });
   $('#impThreads').addEventListener('click', function (ev) {
     var b = ev.target.closest('button'), row = ev.target.closest('.thread'); if (!b || !row) return;
     ev.stopPropagation();
     var r = rowInfo(row);
+    imp.manual[row.dataset.kind + r.k] = true;
     if (b.dataset.act === 'imp-bare') {
       r.list[r.k] = r.list[r.k] == null ? r.gr.guess : null;
       $('input', row).value = r.list[r.k] || ''; threadName(row);
@@ -3443,7 +3531,7 @@ var ChartPdf = (function () {
     var p = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, count: count, finish: finish });
     clearTimeout(saveTimer);
     app.id = keepId; app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.frame = null; app.maskPast = []; app.maskFuture = [];
-    app.source = { page: imp.page, straight: straighten(imp.read.grid), corners: imp.corners, cols: imp.cols, rows: imp.rows, flosses: imp.flosses.slice(), lineFlosses: imp.lineFlosses.slice() };
+    app.source = { page: imp.page, straight: straighten(imp.read.grid), corners: imp.corners, cols: imp.cols, rows: imp.rows, flosses: imp.flosses.slice(), lineFlosses: imp.lineFlosses.slice(), key: imp.key || '' };
     app.blank = p.blank; app.pattern = p; app.showPhoto = false; app.selected = null;
     if (!imp.reread) { app.name = imp.name; $('#name').value = app.name; }
     var f0 = E.palette(p)[0]; app.floss = f0 ? f0.code : DEFAULT_FLOSS; app.tool = 'pencil';
