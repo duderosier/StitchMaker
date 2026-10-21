@@ -249,7 +249,12 @@ try {
   await page.waitForSelector('.imp-step[data-step=threads].on', { timeout: 20000 });
   const knotRow = await page.$$eval('#impThreads .thread[data-kind=knot] .nm', els => els.map(e => e.textContent).join(' | '));
   check(/5 knots/.test(knotRow), `French knots on a chart are found for confirming (${knotRow})`);
-  await page.click('#importer [data-act=close-dialog]');
+  await page.click('#impThreads .thread[data-kind=line] [data-act=imp-half]');
+  await page.click('[data-act=imp-make]'); await page.waitForTimeout(300);
+  await tab(page, 'chart');
+  const halfTxt = await page.textContent('#chartSummary');
+  check(/2 half stitches/.test(halfTxt) && /5 French knots/.test(halfTxt), `chart lines marked as half stitches import as half stitches (${halfTxt})`);
+  await tab(page, 'colors');
   await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-bw.png'));
   await page.waitForSelector('.imp-step[data-step=grid].on');
   await page.waitForTimeout(300);

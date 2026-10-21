@@ -1818,6 +1818,39 @@ var PatternEngine = (function () {
       if (h[0] !== h[1]) splits.push({ x: c % cols, y: Math.floor(c / cols), diagonal: cellsSample[c].split, a: h[0], b: h[1] });
     });
     var found = readLines(img, grid), dots = readKnots(img, grid, found.lines);
+    // A bare square crossed by one diagonal line (a half stitch, or Backstitch over fabric) reads as inked. Measured
+    // again without the line, it is bare fabric when nothing else is printed in it.
+    var paperIdx = -1, diag = {};
+    groupsOut.forEach(function (g, i) { if (g.paper) paperIdx = i; });
+    found.lines.forEach(function (l) {
+      if (Math.abs(l.x1 - l.x0) !== 1 || Math.abs(l.y1 - l.y0) !== 1) return;
+      var c = Math.min(l.y0, l.y1) * cols + Math.min(l.x0, l.x1); (diag[c] = diag[c] || []).push(l);
+    });
+    Object.keys(diag).forEach(function (key) {
+      var c = +key, g = cells[c], l = diag[c][0], t = cellsSample[c];
+      if (diag[c].length !== 1 || groupsOut[g].paper || halves[c] || dE76(t.lab, [100, 0, 0]) >= 9) return;
+      var x = c % cols, y = (c - x) / cols, up = (l.x1 - l.x0) * (l.y1 - l.y0) < 0, pts = [];
+      for (var j = 0; j < 9; j++) for (var i = 0; i < 9; i++) {
+        var u = 0.2 + 0.6 * (i + 0.5) / 9, v = 0.2 + 0.6 * (j + 0.5) / 9, q = gridPoint(grid, x + u, y + v);
+        pts.push({ d: (up ? u + v - 1 : u - v) / Math.SQRT2, ink: rgbToLab(pixelAt(img, q[0], q[1]))[0] < t.paperL - 40 });
+      }
+      // The fitted grid can sit a little off a heavy line, so find where the line runs before leaving it out.
+      var least = 1;
+      for (var o = -0.2; o <= 0.201; o += 0.05) {
+        var ink = 0, n = 0;
+        pts.forEach(function (pt) { if (Math.abs(pt.d - o) < 0.15) return; n++; if (pt.ink) ink++; });
+        least = Math.min(least, n ? ink / n : 1);
+      }
+      if (least > INK_MARK) return;
+      if (paperIdx < 0) { groupsOut.push({ rgb: [255, 255, 255], hex: '#FFFFFF', ink: 0, count: 0, paper: true, guess: null, sample: { x: x, y: y } }); paperIdx = groupsOut.length - 1; }
+      groupsOut[g].count--; groupsOut[paperIdx].count++; cells[c] = paperIdx;
+    });
+    if (groupsOut.some(function (g) { return !g.count; })) { // a group that was only line-crossed squares
+      var keepIdx = [], newIdx = groupsOut.map(function (g, i) { if (!g.count) return -1; keepIdx.push(i); return keepIdx.length - 1; });
+      groupsOut = keepIdx.map(function (i) { return groupsOut[i]; });
+      cells = cells.map(function (g) { return newIdx[g]; });
+      splits.forEach(function (t) { t.a = newIdx[t.a]; t.b = newIdx[t.b]; });
+    }
     return { cols: cols, rows: rows, cells: cells, splits: splits, groups: groupsOut, lines: found.lines, lineGroups: found.groups,
       knots: dots.knots, knotGroups: dots.groups, grid: grid, symbols: symbols };
   }
@@ -2111,14 +2144,21 @@ var PatternEngine = (function () {
       used.push(a, b);
     });
     var lf = (opts.lineFlosses || []).map(function (code) { return code == null ? -1 : flossIndex(code); });
+    // A line color marked as half stitches: its one-square diagonals over bare squares are Half Stitches.
     (read.lines || []).forEach(function (l) {
       var f = lf[l.group];
       if (f == null || f < 0) return;
+      var hx = Math.min(l.x0, l.x1), hy = Math.min(l.y0, l.y1), c = hy * read.cols + hx;
+      if ((opts.lineHalf || [])[l.group] && Math.abs(l.x1 - l.x0) === 1 && Math.abs(l.y1 - l.y0) === 1 && p.cells[c] < 0 && !p.splits[c]) {
+        p.halves[c] = { diagonal: (l.x1 - l.x0) * (l.y1 - l.y0) < 0 ? '/' : '\\', f: f };
+        used.push(f);
+        return;
+      }
       p.backstitches.push({ x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1, f: f });
     });
     var kf = (opts.knotFlosses || []).map(function (code) { return code == null ? -1 : flossIndex(code); });
     (read.knots || []).forEach(function (k) { var f = kf[k.group]; if (f != null && f >= 0) p.knots.push({ x: k.x, y: k.y, f: f }); });
-    p.extraStitches = Object.keys(p.splits).length > 0 || p.backstitches.length > 0 || p.knots.length > 0;
+    p.extraStitches = Object.keys(p.splits).length > 0 || p.backstitches.length > 0 || p.knots.length > 0 || Object.keys(p.halves).length > 0;
     p.fit = 'shrink';
     p.palette = orderPalette(p.cells, used.filter(function (f) { return f >= 0; }).filter(function (f, i, arr) { return arr.indexOf(f) === i; }));
     if (p.overcast) p.overcast = defaultOvercast(p.blank, p.cols, p.palette);
@@ -3646,7 +3686,7 @@ var ChartPdf = (function () {
       return new Promise(function (r) { c.toBlob(r, 'image/jpeg', 0.88); }).then(function (b) { src[key] = b; return b; });
     }
     return Promise.all([blob(src.page, 'pageBlob'), blob(src.straight, 'straightBlob')]).then(function (b) {
-      return { page: b[0], straight: b[1], corners: src.corners, cols: src.cols, rows: src.rows, flosses: src.flosses, lineFlosses: src.lineFlosses || null, knotFlosses: src.knotFlosses || null, key: src.key || '', joined: !!src.joined, pages: src.pages || 1, layout: src.layout || null };
+      return { page: b[0], straight: b[1], corners: src.corners, cols: src.cols, rows: src.rows, flosses: src.flosses, lineFlosses: src.lineFlosses || null, lineHalf: src.lineHalf || null, knotFlosses: src.knotFlosses || null, key: src.key || '', joined: !!src.joined, pages: src.pages || 1, layout: src.layout || null };
     });
   }
   function canvasFromBlob(b) {
@@ -3660,7 +3700,7 @@ var ChartPdf = (function () {
           app.id = rec.id; app.name = rec.name; $('#name').value = rec.name;
           app.blank = rec.blank; app.frame = null; app.colorCount = rec.colorCount; app.confetti = rec.confetti;
           app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.maskPast = []; app.maskFuture = [];
-          app.source = { page: cv[0], straight: cv[1], pageBlob: rec.source.page, straightBlob: rec.source.straight, corners: rec.source.corners, cols: rec.source.cols, rows: rec.source.rows, flosses: rec.source.flosses, lineFlosses: rec.source.lineFlosses || null, knotFlosses: rec.source.knotFlosses || null, key: rec.source.key || '',
+          app.source = { page: cv[0], straight: cv[1], pageBlob: rec.source.page, straightBlob: rec.source.straight, corners: rec.source.corners, cols: rec.source.cols, rows: rec.source.rows, flosses: rec.source.flosses, lineFlosses: rec.source.lineFlosses || null, lineHalf: rec.source.lineHalf || null, knotFlosses: rec.source.knotFlosses || null, key: rec.source.key || '',
             joined: !!rec.source.joined, pages: rec.source.pages || 1, layout: rec.source.layout || null };
           app.pattern = E.deserialize(rec.pattern);
           var f1 = E.palette(app.pattern)[0]; app.floss = f1 ? f1.code : DEFAULT_FLOSS; app.selected = null; app.showPhoto = false;
@@ -3818,7 +3858,7 @@ var ChartPdf = (function () {
   // saved: { corners, cols, rows, flosses } when re-reading an imported Pattern
   function startGrid(page, name, saved) {
     var data = page.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, page.width, page.height);
-    imp = { page: page, data: data, name: name, reread: !!saved, adding: !saved && addingPage, flosses: saved ? saved.flosses : null, lineFlosses: saved ? saved.lineFlosses : null, knotFlosses: saved ? saved.knotFlosses : null,
+    imp = { page: page, data: data, name: name, reread: !!saved, adding: !saved && addingPage, flosses: saved ? saved.flosses : null, lineFlosses: saved ? saved.lineFlosses : null, knotFlosses: saved ? saved.knotFlosses : null, lineHalf: saved ? saved.lineHalf : null,
       key: saved ? saved.key || '' : '', keyFrom: saved ? null : pdfKey, glyphs: saved ? null : page.glyphs || null, manual: {} };
     if (saved) { imp.corners = saved.corners.map(function (p) { return p.slice(); }); imp.cols = saved.cols; imp.rows = saved.rows; imp.typed = true; }
     else { imp.corners = E.guessChartCorners(data); var n = E.estimateGridCounts(data, imp.corners); imp.cols = n.cols; imp.rows = n.rows; imp.typed = false; }
@@ -3910,6 +3950,8 @@ var ChartPdf = (function () {
         imp.flosses = imp.read.groups.map(function (gr, k) { return keep ? imp.flosses[k] : gr.paper ? null : gr.guess; });
         var keepL = imp.lineFlosses && imp.lineFlosses.length === imp.read.lineGroups.length && !prev;
         imp.lineFlosses = imp.read.lineGroups.map(function (gr, k) { return keepL ? imp.lineFlosses[k] : gr.guess; });
+        var keepH = imp.lineHalf && imp.lineHalf.length === imp.read.lineGroups.length && !prev;
+        imp.lineHalf = imp.read.lineGroups.map(function (gr, k) { return keepH ? !!imp.lineHalf[k] : false; });
         var keepK = imp.knotFlosses && imp.knotFlosses.length === imp.read.knotGroups.length && !prev;
         imp.knotFlosses = imp.read.knotGroups.map(function (gr, k) { return keepK ? imp.knotFlosses[k] : gr.guess; });
         imp.manual = {}; imp.bySymbol = {}; // colors set by hand, and matched by symbol: key numbers leave both alone
@@ -4023,6 +4065,9 @@ var ChartPdf = (function () {
       gr: kind === 'line' ? imp.read.lineGroups[k] : kind === 'knot' ? imp.read.knotGroups[k] : imp.read.groups[k],
       list: kind === 'line' ? imp.lineFlosses : kind === 'knot' ? imp.knotFlosses : imp.flosses };
   }
+  // Charts draw a half stitch as one diagonal across a square, which reads like a short Backstitch line, so a line
+  // color can be marked "Half stitches": its one-square diagonals over bare squares become Half Stitches.
+  function hasDiagonals(k) { return imp.read.lines.some(function (l) { return l.group === k && Math.abs(l.x1 - l.x0) === 1 && Math.abs(l.y1 - l.y0) === 1; }); }
   function knotCloseUp(gr) {
     var c = document.createElement('canvas'); c.width = c.height = 44;
     var cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, 44, 44);
@@ -4052,6 +4097,7 @@ var ChartPdf = (function () {
       f.innerHTML = '<div class="row"><input type="text" inputmode="text" autocomplete="off" aria-label="DMC number" placeholder="DMC" value="' + (code || '') + '">' +
         '<button class="secondary" data-act="imp-pick">Pick</button>' +
         '<button class="secondary" data-act="imp-bare" aria-pressed="' + (code == null) + '">' + (kind === 'cell' ? 'Bare fabric' : 'Skip') + '</button></div>' +
+        (kind === 'line' && hasDiagonals(k) ? '<button class="secondary" data-act="imp-half" aria-pressed="' + !!imp.lineHalf[k] + '">Half stitches</button>' : '') +
         '<div class="nm"></div>';
       row.appendChild(f); list.appendChild(row);
       threadName(row);
@@ -4074,6 +4120,7 @@ var ChartPdf = (function () {
     $('[data-act=imp-bare]', row).setAttribute('aria-pressed', String(code == null));
     nm.classList.toggle('bad', !fl && code != null);
     var none = r.line ? 'Skipped' : 'Left as bare fabric', n = r.gr.count;
+    if (r.unit === 'line' && imp.lineHalf[r.k] && code != null) { nm.textContent = (fl ? fl.name : 'Not a DMC number') + ' · one-square diagonals as half stitches'; return; }
     nm.textContent = (code == null ? none : fl ? fl.name : 'Not a DMC number') + ' · ' + n + ' ' + r.unit + (n === 1 ? '' : 's');
   }
   $('#impThreads').addEventListener('input', function (ev) {
@@ -4090,6 +4137,8 @@ var ChartPdf = (function () {
     if (b.dataset.act === 'imp-bare') {
       r.list[r.k] = r.list[r.k] == null ? r.gr.guess : null;
       $('input', row).value = r.list[r.k] || ''; threadName(row);
+    } else if (b.dataset.act === 'imp-half') {
+      imp.lineHalf[r.k] = !imp.lineHalf[r.k]; b.setAttribute('aria-pressed', String(imp.lineHalf[r.k])); threadName(row);
     } else if (b.dataset.act === 'imp-pick') {
       openPicker(r.unit === 'line' ? 'Thread for these lines' : r.unit === 'knot' ? 'Thread for these knots' : 'Thread for this color', null, function (code) { r.list[r.k] = code; $('input', row).value = code; threadName(row); });
     }
@@ -4100,10 +4149,10 @@ var ChartPdf = (function () {
     if (imp.flosses.every(function (c) { return c == null; })) { toast('Every color is bare fabric, so there is nothing to stitch.'); return; }
     if (imp.adding) { startPlacing(); return; }
     var keepId = imp.reread && app.source ? app.id : null, count = imp.reread ? app.blank.count : 14, finish = imp.reread ? app.blank.finish : 'framed';
-    var p = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, knotFlosses: imp.knotFlosses, count: count, finish: finish });
+    var p = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, lineHalf: imp.lineHalf, knotFlosses: imp.knotFlosses, count: count, finish: finish });
     clearTimeout(saveTimer);
     app.id = keepId; app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.frame = null; app.maskPast = []; app.maskFuture = [];
-    app.source = { page: imp.page, straight: straighten(imp.read.grid), corners: imp.corners, cols: imp.cols, rows: imp.rows, flosses: imp.flosses.slice(), lineFlosses: imp.lineFlosses.slice(), knotFlosses: imp.knotFlosses.slice(), key: imp.key || '' };
+    app.source = { page: imp.page, straight: straighten(imp.read.grid), corners: imp.corners, cols: imp.cols, rows: imp.rows, flosses: imp.flosses.slice(), lineFlosses: imp.lineFlosses.slice(), lineHalf: imp.lineHalf.slice(), knotFlosses: imp.knotFlosses.slice(), key: imp.key || '' };
     app.blank = p.blank; app.pattern = p; app.showPhoto = false; app.selected = null;
     if (!imp.reread) { app.name = imp.name; $('#name').value = app.name; }
     var f0 = E.palette(p)[0]; app.floss = f0 ? f0.code : DEFAULT_FLOSS; app.tool = 'pencil';
@@ -4129,7 +4178,7 @@ var ChartPdf = (function () {
   }
   function startPlacing() {
     var base = chartBase();
-    imp.part = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, knotFlosses: imp.knotFlosses, count: base.blank.count, finish: base.blank.finish });
+    imp.part = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, lineHalf: imp.lineHalf, knotFlosses: imp.knotFlosses, count: base.blank.count, finish: base.blank.finish });
     impStep('place');
     placeSide(imp.side || 'right');
   }

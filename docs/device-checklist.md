@@ -46,6 +46,7 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 - [ ] A shop PDF that prints its symbols as text (most do) gets every color's DMC number from the key by symbol, even in black and white.
 - [ ] "Key in another photo" (and "Read the key on this page") read a photographed key: online the first time (about 7 MB), offline afterwards.
 - [ ] A chart with French knots (dots on grid corners) lists them under "French knots found on the chart"; they land as knots on the pattern.
+- [ ] A line color with one-square diagonals offers "Half stitches"; turned on, those diagonals over bare squares land as half stitches.
 - [ ] A black-and-white (symbols only) chart lists one row per symbol with its close-up and a note to match it to the key.
 - [ ] Add a chart page (Colors step) reads another page or photo; the place step shows the joined chart with the new page outlined, finds repeated columns or rows, and Start a new row puts the page under the first one.
 - [ ] The Pattern matches the chart (Original toggles the straightened chart over it); Fabric Count changes keep every stitch.

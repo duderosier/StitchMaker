@@ -333,3 +333,24 @@ test('read knots become French knots with the confirmed Floss, or are skipped', 
   assert.deepEqual(E.knots(p).map(k => [k.x, k.y, k.code]), [[1, 1, '321']]);
   assert.equal(p.extraStitches, true);
 });
+
+test('a line color marked as half stitches turns its one-square diagonals over bare squares into Half Stitches', () => {
+  const read = { cols: 3, rows: 2, cells: [0, 1, 1, 1, 1, 1], groups: [{}, { paper: true }], splits: [],
+    lines: [{ x0: 1, y0: 1, x1: 2, y1: 0, group: 0 }, { x0: 2, y0: 0, x1: 3, y1: 1, group: 0 }, { x0: 0, y0: 0, x1: 1, y1: 1, group: 0 },
+      { x0: 0, y0: 2, x1: 3, y1: 2, group: 0 }, { x0: 1, y0: 1, x1: 2, y1: 2, group: 1 }] };
+  const p = E.createImportedPattern({ read, flosses: ['310', null], lineFlosses: ['321', '699'], lineHalf: [true, false] });
+  assert.deepEqual(E.halfList(p), [{ x: 1, y: 0, diagonal: '/', code: '321' }, { x: 2, y: 0, diagonal: '\\', code: '321' }]);
+  assert.deepEqual(E.backstitches(p).map(b => [b.x0, b.y0, b.x1, b.y1, b.code]),
+    [[0, 0, 1, 1, '321'], [0, 2, 3, 2, '321'], [1, 1, 2, 2, '699']], 'over a stitched square, along a side, or another color: still Backstitch');
+  assert.ok(E.palette(p).some(f => f.code === '321'), 'half stitches use Palette Flosses');
+});
+
+test('bare squares crossed by a diagonal line stay bare fabric; squares with a symbol under the line do not', () => {
+  const kind = (x, y) => (y < 4 ? sampleKind(x, y) : y === 5 && x === 6 ? { tint: WHITE, symbol: 'x' } : null);
+  const { image, corners } = chart(12, 10, kind, { lines: [[1, 9, 2, 8], [2, 8, 3, 9], [6, 6, 7, 5]] });
+  const read = E.readChart(image, { corners, cols: 12, rows: 10 });
+  assert.equal(groupAt(read, 1, 8).paper, true);
+  assert.equal(groupAt(read, 2, 8).paper, true);
+  assert.equal(groupAt(read, 6, 5).paper, false, 'a crossed-symbol square keeps its Stitch');
+  assert.equal(read.lines.filter(l => Math.abs(l.x1 - l.x0) === 1 && Math.abs(l.y1 - l.y0) === 1).length, 3);
+});
