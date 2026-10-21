@@ -175,6 +175,15 @@ try {
   await tab(page, 'chart');
   const chartTxt = await page.textContent('#chartSummary');
   check(/1 half stitch\b/.test(chartTxt) && /1 quarter stitch\b/.test(chartTxt) && /1 French knot\b/.test(chartTxt), `the Half, Quarter and Knot tools add their stitches (${chartTxt})`);
+  const [oxsDownload] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.click('[data-act=export-oxs]')]);
+  const oxsPath = await oxsDownload.path(), oxsText = await readFile(oxsPath, 'utf8');
+  check(/<chart>/.test(oxsText) && /objecttype="knot"/.test(oxsText) && /direction="[34]"/.test(oxsText), `Save .oxs file writes an .oxs chart (${oxsDownload.suggestedFilename()})`);
+  const sizeBefore = (await page.textContent('#readout')).split(' stitches')[0];
+  await page.setInputFiles('#chartFile', { name: 'back.oxs', mimeType: 'application/xml', buffer: Buffer.from(oxsText) });
+  await page.waitForTimeout(400);
+  await tab(page, 'chart');
+  const reopened = await page.textContent('#chartSummary');
+  check((await page.textContent('#readout')).startsWith(sizeBefore) && /1 half stitch\b/.test(reopened) && /1 French knot\b/.test(reopened), `an .oxs file opens as a pattern with its stitches (${reopened})`);
   check(/1 backstitch lines?/.test(chartTxt), `the Line tool stitches a Backstitch between two corners (${chartTxt})`);
   await tab(page, 'colors');
   const splitTxt = (await page.locator('#flossList .floss .ct').allTextContents()).join(' ');

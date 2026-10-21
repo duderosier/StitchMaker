@@ -59,6 +59,7 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 - [ ] The Colors step and the Chart legend give strands for the Fabric Count and skeins per thread (about 1,500 crosses per skein on 14 count).
 - [ ] Swipe the app away and reopen: the pattern is back exactly as left.
 - [ ] My patterns: open, rename and delete; New pattern starts fresh.
+- [ ] Save .oxs file shares or downloads an .oxs that opens in another cross stitch app; Import a chart opens an .oxs from another app.
 
 ## Layout
 - [ ] iPhone: one column; plum top pill; step chips under the preview; the drawer handle pulls the controls up; the bottom dock (Picture, Import chart, Draw, Save) is reachable with one thumb.

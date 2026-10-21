@@ -564,7 +564,9 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
       <div class="row"><span class="field-label">Print in</span>
         <div class="seg" id="bw"><button data-bw="0" aria-pressed="true">Color</button><button data-bw="1">Black and white</button></div>
       </div>
-      <div><button class="primary" data-act="export">Create Chart PDF</button></div>
+      <div class="actions"><button class="primary" data-act="export">Create Chart PDF</button>
+        <button class="secondary" data-act="export-oxs">Save .oxs file</button></div>
+      <p class="muted">.oxs opens in WinStitch, MacStitch, FlossCross, Cross Stitch Saga and other cross stitch apps.</p>
       <p class="muted" id="chartSummary"></p>
       <p class="credit">DMC color data: craft-color-codes by <a href="https://makebead.com/">MakeBead</a>, CC BY 4.0. Screen colors are approximate; check against a real thread card.</p>
     </div>
@@ -589,7 +591,7 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
 </div>
 
 <input type="file" id="file" accept="image/*,image/heic,image/heif" hidden>
-<input type="file" id="chartFile" accept="image/*,image/heic,image/heif,.heic,.heif,application/pdf,.pdf" hidden>
+<input type="file" id="chartFile" accept="image/*,image/heic,image/heif,.heic,.heif,application/pdf,.pdf,.oxs,application/xml,text/xml" hidden>
 <div class="toast" id="toast" hidden role="status"></div>
 
 <dialog id="picker">
@@ -2441,6 +2443,129 @@ var PatternEngine = (function () {
   }
 
   function flossOut(i) { var f = DMC[i]; return { code: f.code, name: f.name, hex: f.hex }; }
+  // ---------- .oxs (Open Cross Stitch) ----------
+  // The XML interchange format from Ursa Software (WinStitch/MacStitch), also read and written by FlossCross, Cross
+  // Stitch Saga, StitchHub and others. Coordinates are in stitches (corners 0..width, half positions as .5).
+  // Split Cells are part stitches 1 (\, palindex1 bottom-left, palindex2 top-right) and 2 (/, top-left, bottom-right);
+  // Half Stitches part stitches 3 (/) and 4 (\); Quarter Stitches XSPro "quarter" objects with petit="false".
+  function xmlEsc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function oxsExport(p, opts) {
+    opts = opts || {};
+    var cells = effectiveCells(p), sp = effectiveSplits(p), h = effectiveHalves(p), q = effectiveQuarters(p), index = {}, items = [], c, x, y;
+    function pal(f) {
+      if (f < 0) return 0;
+      if (!index[f]) { items.push(f); index[f] = items.length; }
+      return index[f];
+    }
+    p.palette.forEach(pal); (p.backstitches || []).forEach(function (b) { pal(b.f); }); (p.knots || []).forEach(function (k) { pal(k.f); });
+    var full = [], parts = [], back = [], orn = [], st = strandsFor(p.blank.count);
+    for (c = 0; c < cells.length; c++) if (cells[c] >= 0) full.push('<stitch x="' + c % p.cols + '" y="' + Math.floor(c / p.cols) + '" palindex="' + pal(cells[c]) + '"/>');
+    Object.keys(sp).map(Number).sort(function (a, b) { return a - b; }).forEach(function (k) {
+      var t = sp[k], slash = t.diagonal === '/';
+      parts.push('<partstitch x="' + k % p.cols + '" y="' + Math.floor(k / p.cols) + '" palindex1="' + pal(slash ? t.a : t.b) + '" palindex2="' + pal(slash ? t.b : t.a) + '" direction="' + (slash ? 2 : 1) + '"/>');
+    });
+    Object.keys(h).map(Number).sort(function (a, b) { return a - b; }).forEach(function (k) {
+      parts.push('<partstitch x="' + k % p.cols + '" y="' + Math.floor(k / p.cols) + '" palindex1="' + pal(h[k].f) + '" palindex2="0" direction="' + (h[k].diagonal === '/' ? 3 : 4) + '"/>');
+    });
+    Object.keys(q).map(Number).sort(function (a, b) { return a - b; }).forEach(function (k) {
+      CORNERS.forEach(function (cn) {
+        if (q[k][cn] == null) return;
+        x = k % p.cols + (cn[1] === 'e' ? 0.5 : 0); y = Math.floor(k / p.cols) + (cn[0] === 's' ? 0.5 : 0);
+        orn.push('<object x1="' + x + '" y1="' + y + '" palindex="' + pal(q[k][cn]) + '" objecttype="quarter" petit="false"/>');
+      });
+    });
+    (p.backstitches || []).forEach(function (b) { back.push('<backstitch x1="' + b.x0 + '" y1="' + b.y0 + '" x2="' + b.x1 + '" y2="' + b.y1 + '" palindex="' + pal(b.f) + '" objecttype="backstitch"/>'); });
+    (p.knots || []).forEach(function (k) { orn.push('<object x1="' + k.x + '" y1="' + k.y + '" palindex="' + pal(k.f) + '" objecttype="knot"/>'); });
+    var out = ['<?xml version="1.0" encoding="UTF-8"?>', '<chart>', '<format comments01="Open Cross Stitch (.oxs), see ursasoftware.com/OXSFormat"/>',
+      '<properties oxsversion="1.0" software="StitchMaker" software_version="1" chartwidth="' + p.cols + '" chartheight="' + p.rows + '" charttitle="' + xmlEsc(opts.title || '') +
+      '" author="" copyright="" instructions="" stitchesperinch="' + p.blank.count + '" stitchesperinch_y="' + p.blank.count + '" palettecount="' + items.length + '"/>',
+      '<palette>', '<palette_item index="0" number="cloth" name="cloth" color="FFFFFF" printcolor="FFFFFF" blendcolor="nil" comments="aida" strands="' + st.cross + '" symbol="0" dashpattern="" bsstrands="' + st.back + '" bscolor="000000"/>'];
+    items.forEach(function (f, i) {
+      var d = DMC[f], hex = d.hex.slice(1);
+      out.push('<palette_item index="' + (i + 1) + '" number="DMC ' + xmlEsc(d.code) + '" name="' + xmlEsc(d.name) + '" color="' + hex + '" printcolor="' + hex + '" blendcolor="nil" comments="" strands="' + st.cross +
+        '" symbol="' + xmlEsc(SYMBOLS[i % SYMBOLS.length]) + '" dashpattern="" bsstrands="' + st.back + '" bscolor="' + hex + '"/>');
+    });
+    out.push('</palette>');
+    function section(tag, list) { out.push('<' + tag + '>'); list.forEach(function (l) { out.push(l); }); out.push('</' + tag + '>'); }
+    section('fullstitches', full); section('partstitches', parts); section('backstitches', back); section('ornaments_inc_knots_and_beads', orn);
+    out.push('<commentboxes>', '</commentboxes>', '</chart>');
+    return out.join('\n');
+  }
+  // The elements of an XML document in order, as { name, attrs }: enough for .oxs, which keeps everything in attributes.
+  function xmlElements(xml) {
+    var out = [], re = /<([A-Za-z_][\w.:-]*)((?:\s+[\w.:-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*\/?>/g, m;
+    function un(v) { return v.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, function (s2, n) { return String.fromCharCode(+n); }).replace(/&amp;/g, '&'); }
+    while ((m = re.exec(xml))) {
+      var attrs = {}, am, are = /([\w.:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+      while ((am = are.exec(m[2]))) attrs[am[1].toLowerCase()] = un(am[2] != null ? am[2] : am[3]);
+      out.push({ name: m[1].toLowerCase(), attrs: attrs });
+    }
+    return out;
+  }
+  // Read an .oxs file into a Pattern on a custom Blank at its stitches per inch. DMC threads keep their number;
+  // other brands become the nearest DMC Floss by color. What has no place here is counted in `warnings`.
+  function oxsImport(xml) {
+    var els = xmlElements(String(xml || ''));
+    if (!els.some(function (e) { return e.name === 'chart'; })) throw new Error('This file is not an .oxs chart');
+    var props = (els.filter(function (e) { return e.name === 'properties'; })[0] || {}).attrs || {};
+    var w = Math.round(+props.chartwidth), h = Math.round(+props.chartheight);
+    if (!(w > 0 && h > 0 && w <= 1000 && h <= 1000)) throw new Error('This .oxs chart has no usable size');
+    var spi = +props.stitchesperinch || 14, count = FABRIC_COUNTS.reduce(function (a, b) { return Math.abs(b - spi) < Math.abs(a - spi) ? b : a; });
+    var warnings = [], lost = {};
+    function lose(what) { lost[what] = (lost[what] || 0) + 1; }
+    var pal = {};
+    els.forEach(function (e) {
+      if (e.name !== 'palette_item' && e.name !== 'color') return;
+      var a = e.attrs, num = String(a.number || '').trim();
+      if (a.index == null || /^cloth$/i.test(num) || a.index === '0') { if (a.index != null) pal[a.index] = -1; return; }
+      var code = num.replace(/^dmc\s*/i, ''), f = DMC_BY_CODE[code] || DMC_BY_CODE[code.toUpperCase()] || DMC_BY_CODE[code.charAt(0).toUpperCase() + code.slice(1).toLowerCase()];
+      if (!f && /^\d$/.test(code)) f = DMC_BY_CODE['0' + code];
+      if (f && (/^dmc/i.test(num) || /^\w+$/.test(num))) { pal[a.index] = f.index; return; }
+      var hex = String(a.color || '').replace(/^#/, '');
+      if (!/^[0-9a-f]{6}$/i.test(hex)) { pal[a.index] = -1; warnings.push(num + ' has no color and was left out'); return; }
+      var near = nearestDmc(rgbToLab([parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)]));
+      pal[a.index] = near; warnings.push((num || 'A thread') + ' matched to DMC ' + DMC[near].code + ' by color');
+    });
+    function f(i) { var v = pal[i]; return v == null ? -1 : v; }
+    var p = createBlankPattern({ blank: chartBlank(w, h, count, 'framed'), palette: [] }), used = [];
+    function cellOf(a) { var x = Math.round(+a.x), y = Math.round(+a.y); return x >= 0 && y >= 0 && x < w && y < h ? y * w + x : -1; }
+    els.forEach(function (e) {
+      var a = e.attrs, c;
+      if (e.name === 'stitch') { c = cellOf(a); if (c >= 0) p.cells[c] = f(a.palindex); }
+      else if (e.name === 'partstitch') {
+        c = cellOf(a); if (c < 0) return;
+        var d = +a.direction, f1 = f(a.palindex1), f2 = f(a.palindex2);
+        if (d === 3 || d === 4) { if (f1 >= 0) { p.cells[c] = -1; delete p.splits[c]; p.halves[c] = { diagonal: d === 3 ? '/' : '\\', f: f1 }; used.push(f1); } }
+        else if (d === 1 || d === 2) { putSplit(p.cells, p.splits, c, d === 2 ? '/' : '\\', d === 2 ? f1 : f2, d === 2 ? f2 : f1); used.push(f1, f2); }
+        else lose('part stitch of an unknown kind');
+      } else if (e.name === 'backstitch') {
+        var l = [+a.x1, +a.y1, +a.x2, +a.y2], bf = f(a.palindex), kind = a.objecttype || 'backstitch';
+        if (kind !== 'backstitch') { lose(kind); return; }
+        if (!lineFits(p, l)) { lose('line between half squares'); return; }
+        if (bf >= 0) p.backstitches.push({ x0: l[0], y0: l[1], x1: l[2], y1: l[3], f: bf });
+      } else if (e.name === 'object') {
+        var kind2 = String(a.objecttype || '').toLowerCase(), ox = +a.x1, oy = +a.y1, of = f(a.palindex);
+        if (kind2 === 'knot') { if (knotFits(p, ox, oy) && of >= 0) p.knots.push({ x: ox, y: oy, f: of }); else lose('knot off the grid'); }
+        else if (kind2 === 'quarter' && a.petit === 'false' && of >= 0) {
+          var qc = Math.floor(oy) * w + Math.floor(ox), cn = (oy % 1 ? 's' : 'n') + (ox % 1 ? 'e' : 'w');
+          if (ox < 0 || oy < 0 || ox >= w || oy >= h) { lose('quarter stitch off the grid'); return; }
+          var qs = Object.assign({}, p.quarters[qc] || {}); qs[cn] = of; p.quarters[qc] = qs; p.cells[qc] = -1; used.push(of);
+        } else lose(/^bead/.test(kind2) ? 'bead' : kind2 === 'quarter' ? 'petite stitch' : kind2 || 'ornament');
+      }
+    });
+    Object.keys(lost).forEach(function (k) { warnings.push(lost[k] + ' ' + k + (lost[k] === 1 ? '' : 's') + ' left out'); });
+    // The Palette keeps the file's order (its symbols follow it): every thread stitched in the grid, and threads
+    // listed but not yet used; ones only used for lines or knots stay out of it.
+    var extras = p.backstitches.map(function (b) { return b.f; }).concat(p.knots.map(function (k) { return k.f; }));
+    p.palette = [];
+    Object.keys(pal).sort(function (a, b) { return a - b; }).forEach(function (i) {
+      var g = pal[i];
+      if (g < 0 || p.palette.indexOf(g) >= 0) return;
+      if (p.cells.indexOf(g) >= 0 || used.indexOf(g) >= 0 || extras.indexOf(g) < 0) p.palette.push(g);
+    });
+    p.extraStitches = !!(Object.keys(p.splits).length || Object.keys(p.halves).length || Object.keys(p.quarters).length || p.backstitches.length || p.knots.length);
+    return { pattern: p, title: props.charttitle || '', warnings: warnings };
+  }
   // ---------- thread usage ----------
   // Strands by Fabric Count (plastic canvas takes all six), Backstitch half as many. Thread per stitch follows the
   // common planning rule of about 223 × count ÷ strands full crosses per 8 m skein, waste included; part stitches
@@ -2547,7 +2672,7 @@ var PatternEngine = (function () {
     readChart: readChart, estimateGridCounts: estimateGridCounts, fitChartGrid: fitChartGrid, gridPoint: gridPoint, cornerGrid: cornerGrid, guessChartCorners: guessChartCorners,
     createImportedPattern: createImportedPattern, chartBlank: chartBlank, keyCodesFromText: keyCodesFromText, keyGuesses: keyGuesses, keyPairsFromText: keyPairsFromText, cellSymbols: cellSymbols, symbolKeyGuesses: symbolKeyGuesses, chartPartOffset: chartPartOffset, joinChartPart: joinChartPart,
     blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette,
-    splitAt: splitAt, splitList: splitList, threadUsage: threadUsage, halfList: halfList, quarterList: quarterList, knots: knots, knotLegend: knotLegend, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, withFit: withFit, splitTriangles: splitTriangles, splitSide: splitSide
+    splitAt: splitAt, splitList: splitList, threadUsage: threadUsage, oxsExport: oxsExport, oxsImport: oxsImport, halfList: halfList, quarterList: quarterList, knots: knots, knotLegend: knotLegend, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, withFit: withFit, splitTriangles: splitTriangles, splitSide: splitSide
   };
 })();
 </script>
@@ -3577,7 +3702,7 @@ var ChartPdf = (function () {
     $('[data-tab=edge]').hidden = !over;
     if (over && app.tab === 'edge') renderEdgePane(p, L, pal);
     // Chart
-    if (chart) $('#chartSummary').textContent = chart.legend.length + ' colors, ' + chart.cells.length + ' stitches' + (chart.splits.length ? ', ' + plural(chart.splits.length, 'split square') : '') + (chart.backstitches.length ? ', ' + plural(chart.backstitches.length, 'backstitch line') : '') + (chart.halves.length ? ', ' + plural(chart.halves.length, 'half stitch', 'half stitches') : '') + (chart.quarters.length ? ', ' + plural(chart.quarters.length, 'quarter stitch', 'quarter stitches') : '') + (chart.knots.length ? ', ' + plural(chart.knots.length, 'French knot') : '') + (chart.edges.length ? ', ' + chart.edges.length + ' edge stitches' : '') + '. ' + chart.header.size + '. ' + strandsText(chart) + ' ' + plural(chart.skeins, 'skein') + ' of thread.';
+    if (chart) $('#chartSummary').textContent = plural(chart.legend.length, 'color') + ', ' + plural(chart.cells.length, 'stitch', 'stitches') + (chart.splits.length ? ', ' + plural(chart.splits.length, 'split square') : '') + (chart.backstitches.length ? ', ' + plural(chart.backstitches.length, 'backstitch line') : '') + (chart.halves.length ? ', ' + plural(chart.halves.length, 'half stitch', 'half stitches') : '') + (chart.quarters.length ? ', ' + plural(chart.quarters.length, 'quarter stitch', 'quarter stitches') : '') + (chart.knots.length ? ', ' + plural(chart.knots.length, 'French knot') : '') + (chart.edges.length ? ', ' + chart.edges.length + ' edge stitches' : '') + '. ' + chart.header.size + '. ' + strandsText(chart) + ' ' + plural(chart.skeins, 'skein') + ' of thread.';
     pressed($('#bw'), 'data-bw', app.bw ? 1 : 0);
     // History
     $('#undo').disabled = !(p && E.canUndo(p));
@@ -3660,6 +3785,16 @@ var ChartPdf = (function () {
     var blob = new Blob([bytes], { type: 'application/pdf' });
     var file = null;
     try { file = new File([blob], fileName || 'chart.pdf', { type: 'application/pdf' }); } catch (e) { file = null; }
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: name }).catch(function (err) { if (err && err.name !== 'AbortError') download(blob, fileName); });
+    } else download(blob, fileName);
+  }
+  // .oxs for other cross stitch programs (WinStitch, MacStitch, FlossCross, Cross Stitch Saga…).
+  function exportOxs() {
+    if (!app.pattern) { toast('Choose a photo first.'); return; }
+    var name = app.name || 'Keychain pattern', fileName = (name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-') || 'pattern') + '.oxs';
+    var blob = new Blob([E.oxsExport(app.pattern, { title: name })], { type: 'application/xml' }), file = null;
+    try { file = new File([blob], fileName, { type: 'application/xml' }); } catch (e) { file = null; }
     if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
       navigator.share({ files: [file], title: name }).catch(function (err) { if (err && err.name !== 'AbortError') download(blob, fileName); });
     } else download(blob, fileName);
@@ -3869,8 +4004,25 @@ var ChartPdf = (function () {
     return chain.then(function () { return { codes: E.keyCodesFromText(text, { skipNumberLines: true }).join(', '), pairs: E.keyPairsFromText(text) }; })
       .catch(function () { return { codes: '', pairs: [] }; });
   }
+  // An .oxs file from another program is a ready Pattern, opened like a drawing (no Source Chart to re-read).
+  function openOxs(file, name) {
+    file.text().then(function (xml) {
+      var r = E.oxsImport(xml), p = r.pattern;
+      clearTimeout(saveTimer);
+      app.id = null; app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.frame = null; app.maskPast = []; app.maskFuture = [];
+      app.source = null; app.fitFrom = null; addingPage = false;
+      app.blank = p.blank; app.pattern = p; app.showPhoto = false; app.selected = null;
+      app.name = (r.title || name).slice(0, 40); $('#name').value = app.name;
+      var f0 = E.palette(p)[0]; app.floss = f0 ? f0.code : DEFAULT_FLOSS; app.tool = 'pencil';
+      app.view = { zoom: 1, panX: 0, panY: 0 };
+      setTab('edit');
+      toast('Opened ' + p.cols + ' × ' + p.rows + ' stitches.' + (r.warnings.length ? ' ' + r.warnings.join('; ') + '.' : ''));
+      scheduleSave();
+    }).catch(function (err) { toast('Could not open that .oxs file: ' + (err && err.message || 'unknown error') + '.'); });
+  }
   function importFile(file) {
     var name = (file.name || 'Imported chart').replace(/\.[^.]+$/, '').slice(0, 40) || 'Imported chart';
+    if (/\.oxs$/i.test(file.name || '') || /xml/.test(file.type || '')) { openOxs(file, name); return; }
     openImporter();
     if (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name || '')) {
       impStep('pages'); $('#impPages').innerHTML = ''; impBusy('Opening the PDF…');
@@ -4378,6 +4530,7 @@ var ChartPdf = (function () {
       case 'edge-clear': edit({ type: 'edgeClear' }); break;
       case 'reset-view': app.view = { zoom: 1, panX: 0, panY: 0 }; app.bgView = { zoom: 1, panX: 0, panY: 0 }; render(); break;
       case 'export': exportPdf(); break;
+      case 'export-oxs': exportOxs(); break;
       case 'close-dialog': t.closest('dialog').close(); break;
       case 'new-pattern': $('#patterns').close(); startNew(); break;
     }
