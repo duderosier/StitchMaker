@@ -192,6 +192,16 @@ try {
   await page.waitForSelector('.imp-step[data-step=grid].on');
   check(await page.inputValue('#impCols') === '24', 'Re-read chart reopens the saved grid');
   await page.click('#importer [data-act=close-dialog]');
+  await tab(page, 'blank');
+  const stitchCount = async () => (await page.locator('#flossList .floss .ct').allTextContents()).reduce((n, t) => n + (parseInt(t, 10) || 0), 0);
+  const fullCount = await stitchCount();
+  await page.click('[data-preset="round-1.5"]'); await page.waitForTimeout(150);
+  const shrunk = await stitchCount(), shrunkRead = await page.textContent('#readout');
+  check(shrunkRead.startsWith('27 × 27') && shrunk > 0 && shrunk < fullCount && await page.getAttribute('[data-fit=shrink]', 'aria-pressed') === 'true', `a smaller Blank shrinks an imported chart to fit (${fullCount} → ${shrunk})`);
+  await page.click('[data-fit=crop]'); await page.waitForTimeout(150);
+  const cropped = await stitchCount();
+  await page.click('[data-fit=shrink]'); await page.waitForTimeout(150);
+  check(cropped !== shrunk && await stitchCount() === shrunk, `Crop and Shrink to fit redo the Blank change (${cropped} cropped)`);
   await page.setInputFiles('#chartFile', chartPdf);
   await page.waitForSelector('#impPages button[data-page="2"]', { timeout: 20000 }).catch(() => {});
   const hasPages = await page.locator('#impPages button').count();

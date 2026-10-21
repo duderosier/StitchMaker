@@ -1,6 +1,6 @@
 # Spec: Import a Source Chart
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 

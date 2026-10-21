@@ -434,6 +434,12 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
       </div>
       <p class="muted" id="finishNote"></p>
       <p id="gridSize"></p>
+      <div class="row" id="fitRow" hidden><span class="field-label">Too big for the Blank</span>
+        <div class="seg" id="fitMode">
+          <button data-fit="shrink" aria-pressed="false">Shrink to fit</button>
+          <button data-fit="crop" aria-pressed="false">Crop</button>
+        </div>
+      </div>
       <div class="row"><label for="count">Fabric Count</label><select id="count"></select></div>
     </div>
 
@@ -970,6 +976,8 @@ var PatternEngine = (function () {
   }
   // The Pattern with the Split tool shown or hidden (a per-Pattern setting, not an edit).
   function withExtraStitches(p, on) { var q = {}; Object.keys(p).forEach(function (k) { q[k] = p[k]; }); q.extraStitches = !!on; return q; }
+  // What a Blank too small for the design does to a Pattern without a photo: 'shrink' (shrinkToFit) or 'crop' (reshape).
+  function withFit(p, mode) { var q = {}; Object.keys(p).forEach(function (k) { q[k] = p[k]; }); q.fit = mode === 'shrink' ? 'shrink' : 'crop'; return q; }
   function flossIndex(code) {
     var f = DMC_BY_CODE[code];
     if (!f) throw new Error('Unknown DMC Floss: ' + code);
@@ -1259,13 +1267,13 @@ var PatternEngine = (function () {
   }
   function serialize(p) {
     return {
-      v: 1, blank: p.blank, cols: p.cols, rows: p.rows, colorCount: p.colorCount, confetti: p.confetti, extraStitches: !!p.extraStitches,
+      v: 1, blank: p.blank, cols: p.cols, rows: p.rows, colorCount: p.colorCount, confetti: p.confetti, extraStitches: !!p.extraStitches, fit: p.fit || 'crop',
       now: toSaved(snapshot(p)), past: (p.past || []).map(toSaved), future: (p.future || []).map(toSaved)
     };
   }
   function deserialize(o) {
     if (!o || o.v !== 1) throw new Error('Unrecognised saved Pattern');
-    var base = { v: 1, blank: o.blank, cols: o.cols, rows: o.rows, colorCount: o.colorCount, confetti: o.confetti, extraStitches: !!o.extraStitches };
+    var base = { v: 1, blank: o.blank, cols: o.cols, rows: o.rows, colorCount: o.colorCount, confetti: o.confetti, extraStitches: !!o.extraStitches, fit: o.fit === 'shrink' ? 'shrink' : 'crop' };
     return withState(base, fromSaved(o.now), o.past.map(fromSaved), o.future.map(fromSaved));
   }
 
@@ -1771,6 +1779,7 @@ var PatternEngine = (function () {
       p.backstitches.push({ x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1, f: f });
     });
     p.extraStitches = Object.keys(p.splits).length > 0 || p.backstitches.length > 0;
+    p.fit = 'shrink';
     p.palette = orderPalette(p.cells, used.filter(function (f) { return f >= 0; }).filter(function (f, i, arr) { return arr.indexOf(f) === i; }));
     if (p.overcast) p.overcast = defaultOvercast(p.blank, p.cols, p.palette);
     return p;
@@ -1876,7 +1885,7 @@ var PatternEngine = (function () {
     var blank = opts.blank, g = blankGrid(blank), pal = (opts.palette || []).map(flossIndex);
     return {
       v: 1, blank: blank, cols: g.cols, rows: g.rows, colorCount: opts.colorCount || 6, confetti: 0,
-      cells: new Array(g.cols * g.rows).fill(-1), splits: {}, backstitches: [], palette: pal, extraStitches: false,
+      cells: new Array(g.cols * g.rows).fill(-1), splits: {}, backstitches: [], palette: pal, extraStitches: false, fit: 'crop',
       overcast: isOvercast(blank) ? (opts.overcast ? JSON.parse(JSON.stringify(opts.overcast)) : defaultOvercast(blank, g.cols, pal)) : null,
       edits: [], past: [], future: []
     };
@@ -1898,6 +1907,67 @@ var PatternEngine = (function () {
       .filter(function (b) { return lineFits(next, [b.x0, b.y0, b.x1, b.y1]); });
     next.palette = p.palette.slice();
     next.extraStitches = !!p.extraStitches;
+    next.fit = p.fit || 'crop';
+    next.confetti = p.confetti;
+    return next;
+  }
+  function stitchCount(p) { return p.cells.filter(function (f) { return f >= 0; }).length + Object.keys(p.splits || {}).length; }
+  // Whether moving the Pattern onto `blank` (reshape) keeps every Stitch.
+  function fitsBlank(p, blank) { return stitchCount(reshape(p, blank)) === stitchCount(p); }
+  // Move a Pattern onto a Blank too small for it by scaling its stitched area down, by the largest factor that
+  // keeps every Stitch inside the shape. Each new cell takes the most common value of the cells it covers
+  // (Split Cell triangles count half); Backstitches move to the nearest corners. No new Flosses appear.
+  function shrinkToFit(p, blank) {
+    if (fitsBlank(p, blank)) return reshape(p, blank);
+    var x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1, x, y;
+    for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) {
+      var c = y * p.cols + x;
+      if (p.cells[c] < 0 && !(p.splits && p.splits[c])) continue;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+    var bw = x1 - x0 + 1, bh = y1 - y0 + 1, g = blankGrid(blank), rank = {};
+    p.palette.forEach(function (f, i) { rank[f] = i; });
+    function vote(tx, ty, tw, th) { // the winning value for target cell (tx, ty) of a tw × th design
+      var sx0 = x0 + tx * bw / tw, sx1 = x0 + (tx + 1) * bw / tw, sy0 = y0 + ty * bh / th, sy1 = y0 + (ty + 1) * bh / th, w = {};
+      function add(f, v) { w[f] = (w[f] || 0) + v; }
+      for (var sy = Math.floor(sy0); sy < sy1; sy++) for (var sx = Math.floor(sx0); sx < sx1; sx++) {
+        var a = (Math.min(sx + 1, sx1) - Math.max(sx, sx0)) * (Math.min(sy + 1, sy1) - Math.max(sy, sy0)), k = sy * p.cols + sx;
+        if (a <= 0) continue;
+        var t = p.splits && p.splits[k];
+        if (t) { add(t.a, a / 2); add(t.b, a / 2); } else add(p.cells[k], a);
+      }
+      var best = -1, bv = -1;
+      Object.keys(w).forEach(function (key) {
+        var f = +key, v = w[key];
+        if (v > bv + 1e-9 || (Math.abs(v - bv) < 1e-9 && (best < 0 || (f >= 0 && (rank[f] || 0) < (rank[best] || 0))))) { bv = v; best = f; }
+      });
+      return best;
+    }
+    var next = createBlankPattern({ blank: blank, palette: [], colorCount: p.colorCount, overcast: p.overcast && isOvercast(blank) ? p.overcast : null });
+    var tw, th, ox, oy;
+    for (var s = Math.min(1, g.cols / bw, g.rows / bh); ; s *= 0.97) {
+      tw = Math.max(1, Math.min(g.cols, Math.round(bw * s))); th = Math.max(1, Math.min(g.rows, Math.round(bh * s)));
+      ox = Math.floor((g.cols - tw) / 2); oy = Math.floor((g.rows - th) / 2);
+      var cells = new Array(g.cols * g.rows).fill(-1), ok = true;
+      for (y = 0; y < th && ok; y++) for (x = 0; x < tw; x++) {
+        var f = vote(x, y, tw, th), k2 = (y + oy) * g.cols + x + ox;
+        if (f < 0) continue;
+        if (!g.inside[k2]) { ok = false; break; }
+        cells[k2] = f;
+      }
+      if (ok || (tw === 1 && th === 1)) break;
+    }
+    next.cells = cells;
+    function cx(v) { return ox + Math.round((v - x0) * tw / bw); }
+    function cy(v) { return oy + Math.round((v - y0) * th / bh); }
+    (p.backstitches || []).forEach(function (b) {
+      var l = [cx(b.x0), cy(b.y0), cx(b.x1), cy(b.y1)];
+      if (!lineFits(next, l) || next.backstitches.some(function (o) { return sameLine(o, l); })) return;
+      next.backstitches.push({ x0: l[0], y0: l[1], x1: l[2], y1: l[3], f: b.f });
+    });
+    next.palette = p.palette.slice();
+    next.extraStitches = !!p.extraStitches;
+    next.fit = p.fit || 'crop';
     next.confetti = p.confetti;
     return next;
   }
@@ -1946,11 +2016,11 @@ var PatternEngine = (function () {
     overcastLayout: overcastLayout, edgeLegend: edgeLegend, isOvercast: isOvercast, effectiveCells: effectiveCells,
     apply: apply, undo: undo, redo: redo, canUndo: canUndo, canRedo: canRedo, isEdited: isEdited,
     serialize: serialize, deserialize: deserialize,
-    createBlankPattern: createBlankPattern, reshape: reshape, rebase: rebase,
+    createBlankPattern: createBlankPattern, reshape: reshape, shrinkToFit: shrinkToFit, fitsBlank: fitsBlank, rebase: rebase,
     readChart: readChart, estimateGridCounts: estimateGridCounts, fitChartGrid: fitChartGrid, gridPoint: gridPoint, cornerGrid: cornerGrid, guessChartCorners: guessChartCorners,
     createImportedPattern: createImportedPattern, chartBlank: chartBlank,
     blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette,
-    splitAt: splitAt, splitList: splitList, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, splitTriangles: splitTriangles, splitSide: splitSide
+    splitAt: splitAt, splitList: splitList, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, withFit: withFit, splitTriangles: splitTriangles, splitSide: splitSide
   };
 })();
 </script>
@@ -2151,6 +2221,7 @@ var ChartPdf = (function () {
     tab: 'photo', tool: 'pencil', splitDiag: '/', lineFrom: null, edgeTool: 'ring', bgTool: 'wand', tolerance: 20, brush: 24,
     floss: null, selected: null, showPhoto: false, bw: false,
     source: null, // an imported Source Chart: { page, straight (canvases), corners, cols, rows, flosses }
+    fitFrom: null, // { from, to }: the design before the last Blank change and what it became (Shrink to fit / Crop)
     view: { zoom: 1, panX: 0, panY: 0 }, bgView: { zoom: 1, panX: 0, panY: 0 }, full: false
   };
 
@@ -2807,14 +2878,29 @@ var ChartPdf = (function () {
     var counts = E.allowedCounts(next);
     if (counts.indexOf(next.count) < 0) next.count = counts.reduce(function (a, b) { return Math.abs(b - next.count) < Math.abs(a - next.count) ? b : a; });
     // An imported chart is stitched cell for cell: a new Fabric Count changes its size in inches, not its stitches.
-    if (app.source && app.pattern && next.shape === 'custom' && app.blank.shape === 'custom' && next.count !== app.blank.count) {
-      next = E.chartBlank(app.pattern.cols, app.pattern.rows, next.count, next.finish);
-    }
+    var cellForCell = app.source && app.pattern && next.shape === 'custom' && app.blank.shape === 'custom' && next.count !== app.blank.count;
+    if (cellForCell) next = E.chartBlank(app.pattern.cols, app.pattern.rows, next.count, next.finish);
     app.blank = next;
     if (app.frame) { var g = E.blankGrid(next); app.frame.s = app.frame.s * oldG.cols / g.cols; app.frame.fit = Math.min(app.photo.width / g.cols, app.photo.height / g.rows); }
-    if (drawing) { app.pattern = E.reshape(app.pattern, next); changed(); return; }
+    if (drawing) {
+      // Fit from the design as it was before the last Blank change (while it hasn't been edited since), so
+      // trying a small Blank and going back doesn't lose anything.
+      var from = !cellForCell && app.fitFrom && app.fitFrom.to === app.pattern ? app.fitFrom.from : app.pattern;
+      app.pattern = fitOnto(from, next);
+      app.fitFrom = { from: from, to: app.pattern };
+      if (from.fit === 'shrink' && !E.fitsBlank(from, next)) toast('Shrunk to fit: ' + app.pattern.cols + ' × ' + app.pattern.rows + ' stitches. Choose Crop to keep it full size.');
+      changed(); return;
+    }
     if (app.pattern && !E.isOvercast(next)) app.pattern = Object.assign({}, app.pattern, { overcast: null });
     if (app.photo) rebuild(); else changed();
+  }
+  function fitOnto(p, blank) { return p.fit === 'shrink' ? E.shrinkToFit(p, blank) : E.reshape(p, blank); }
+  // Switching between Shrink to fit and Crop redoes the last Blank change the other way.
+  function setFit(mode) {
+    var from = app.fitFrom && app.fitFrom.to === app.pattern ? E.withFit(app.fitFrom.from, mode) : null;
+    app.pattern = from ? fitOnto(from, app.blank) : E.withFit(app.pattern, mode);
+    app.fitFrom = from ? { from: from, to: app.pattern } : null;
+    changed();
   }
   function pressed(container, attr, value) {
     $$('[' + attr + ']', container).forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute(attr) === String(value))); });
@@ -2836,6 +2922,8 @@ var ChartPdf = (function () {
     $('[data-tab=photo]').hidden = noPhoto; $('[data-tab=background]').hidden = noPhoto;
     $$('.js-photo-only').forEach(function (el) { el.hidden = noPhoto; });
     $('#cutoutRow').hidden = b.shape !== 'cutout';
+    $('#fitRow').hidden = !noPhoto;
+    if (noPhoto) pressed($('#fitMode'), 'data-fit', p.fit || 'crop');
     pressed($('#finish'), 'data-finish', b.finish);
     $('#finish [data-finish=framed]').disabled = b.shape === 'cutout';
     $('#finishNote').textContent = b.finish === 'framed' ? 'Aida pressed into a keychain frame; the frame has its own ring.' : 'Plastic canvas cut out, edged with overcast stitches, with its own Ring Hole.';
@@ -3401,6 +3489,7 @@ var ChartPdf = (function () {
     if (t.dataset.preset) { var ps = E.PRESET_SHAPES.filter(function (s) { return s.id === t.dataset.preset; })[0]; setBlank({ shape: 'preset', presetId: ps.id, count: ps.count || app.blank.count, finish: ps.finish || app.blank.finish }); return; }
     if (t.dataset.shape === 'custom') { setBlank({ shape: 'custom', wIn: +$('#customW').value || 2, hIn: +$('#customH').value || 2, count: app.blank.count, finish: app.blank.finish }); return; }
     if (t.dataset.shape === 'cutout') { setBlank({ shape: 'cutout', longIn: +$('#longIn').value || 2, count: app.blank.count, finish: 'overcast' }); return; }
+    if (t.dataset.fit) { if (app.pattern && !app.photo) setFit(t.dataset.fit); return; }
     if (t.dataset.finish) { setBlank(Object.assign({}, app.blank, { finish: t.dataset.finish })); return; }
     if (t.dataset.bgtool) { app.bgTool = t.dataset.bgtool; renderPanels(); render(); return; }
     if (t.dataset.confetti) { if (!app.photo) return; app.confetti = +t.dataset.confetti; rebuild(); return; }
