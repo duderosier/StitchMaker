@@ -4,11 +4,15 @@
 
 **Blocked by:** 11
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Ring Hole can be dragged/placed anywhere
-- [ ] Outside: Ring Tab joins the Cut Line and doesn't change stated size
-- [ ] Inside: cells cleared to Unstitched and edged
-- [ ] Size presets plus custom
-- [ ] Overall size readout includes the tab
-- [ ] Shown on the Chart
+- [x] Ring Hole can be dragged/placed anywhere
+- [x] Outside: Ring Tab joins the Cut Line and doesn't change stated size
+- [x] Inside: cells cleared to Unstitched and edged
+- [x] Size presets plus custom
+- [x] Overall size readout includes the tab
+- [x] Shown on the Chart
+
+## Comments
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).

@@ -1,4 +1,4 @@
-# Stitch Keychains
+# StitchMaker
 
 Mobile web app (Android + iOS browsers) for turning an uploaded photo into a cross-stitch pattern sized for a keychain, with a control for how many colors to reduce the image to (similar to Cricut Design Space's color simplification).
 

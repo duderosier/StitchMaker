@@ -4,10 +4,14 @@
 
 **Blocked by:** 03, 10
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Cut Line follows the Preset Shape
-- [ ] Edge Stitches drawn on screen and Chart
-- [ ] Edge Floss is excluded from Color Count
-- [ ] Chart legend has an Edge section only for Overcast
-- [ ] Framed Blanks have no Edge Stitches
+- [x] Cut Line follows the Preset Shape
+- [x] Edge Stitches drawn on screen and Chart
+- [x] Edge Floss is excluded from Color Count
+- [x] Chart legend has an Edge section only for Overcast
+- [x] Framed Blanks have no Edge Stitches
+
+## Comments
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).

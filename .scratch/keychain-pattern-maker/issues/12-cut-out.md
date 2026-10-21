@@ -4,9 +4,13 @@
 
 **Blocked by:** 06, 11
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Cut-Out is always Overcast
-- [ ] Longest side sets the grid
-- [ ] Inner gaps are filled in the Cut Line
-- [ ] Margin 0–2 grows the Cut Line
+- [x] Cut-Out is always Overcast
+- [x] Longest side sets the grid
+- [x] Inner gaps are filled in the Cut Line
+- [x] Margin 0–2 grows the Cut Line
+
+## Comments
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).

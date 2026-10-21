@@ -4,14 +4,16 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Home-screen install opens full-screen on iOS and Android
-- [ ] App loads with no network after the first visit
-- [ ] Below the width breakpoint: single column with bottom tools; above: Pattern on the left, controls on the right
-- [ ] Manual device checklist from the spec exists in the repo
-- [ ] Publishing steps are documented (needs the user's GitHub repo)
+- [x] Home-screen install opens full-screen on iOS and Android
+- [x] App loads with no network after the first visit
+- [x] Below the width breakpoint: single column with bottom tools; above: Pattern on the left, controls on the right
+- [x] Manual device checklist from the spec exists in the repo
+- [x] Publishing steps are documented (needs the user's GitHub repo)
 
 ## Comments
 
 - 2026-10-20: Wide layout changed by the user from "photo and Pattern side by side" to "Pattern left, controls right".
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).

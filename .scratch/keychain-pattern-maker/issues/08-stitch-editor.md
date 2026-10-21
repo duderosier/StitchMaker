@@ -4,10 +4,14 @@
 
 **Blocked by:** 07
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Two-finger zoom/pan on the grid
-- [ ] Pencil, eraser and eyedropper work by tap and drag
-- [ ] + Floss adds a DMC Floss to the Palette
-- [ ] Undo/redo covers Palette and Stitch edits
-- [ ] Gridlines with bold lines every 10
+- [x] Two-finger zoom/pan on the grid
+- [x] Pencil, eraser and eyedropper work by tap and drag
+- [x] + Floss adds a DMC Floss to the Palette
+- [x] Undo/redo covers Palette and Stitch edits
+- [x] Gridlines with bold lines every 10
+
+## Comments
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).

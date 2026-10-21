@@ -1,4 +1,4 @@
-# Stitch Keychains
+# StitchMaker
 
 Turning a photo into a cross-stitch Pattern that fits a keychain Blank and can be stitched with real thread.
 

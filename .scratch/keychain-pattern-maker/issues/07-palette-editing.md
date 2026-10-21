@@ -4,10 +4,14 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Palette lists swatch, DMC number, name, Stitch count
-- [ ] Merge, Swap and mark-Unstitched update grid and counts
-- [ ] DMC picker searches by number and name
-- [ ] Tapping a Floss highlights its Stitches
-- [ ] Color Count change after edits asks first
+- [x] Palette lists swatch, DMC number, name, Stitch count
+- [x] Merge, Swap and mark-Unstitched update grid and counts
+- [x] DMC picker searches by number and name
+- [x] Tapping a Floss highlights its Stitches
+- [x] Color Count change after edits asks first
+
+## Comments
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).

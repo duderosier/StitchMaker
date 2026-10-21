@@ -4,10 +4,14 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Opening the HTML shows a photo picker
-- [ ] Picking a photo shows a 28×28 Pattern grid on a round outline in at most 6 DMC Flosses
-- [ ] Cells outside the round are Unstitched
-- [ ] Engine tests run under Node's built-in test runner by extracting the engine block from the HTML
-- [ ] Every Palette Floss is a real DMC entry
+- [x] Opening the HTML shows a photo picker
+- [x] Picking a photo shows a 28×28 Pattern grid on a round outline in at most 6 DMC Flosses
+- [x] Cells outside the round are Unstitched
+- [x] Engine tests run under Node's built-in test runner by extracting the engine block from the HTML
+- [x] Every Palette Floss is a real DMC entry
+
+## Comments
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).

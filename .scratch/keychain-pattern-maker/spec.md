@@ -57,7 +57,7 @@ A single-page app, delivered as one self-contained HTML file served from GitHub 
 34. As a stitcher, I want to Merge one Floss into another, so that I can drop colors that barely matter.
 35. As a stitcher, I want to Swap a Floss for any DMC Floss using a searchable picker (by number, name or by browsing swatches), so that I can use thread I already own.
 36. As a stitcher, I want to mark a Floss as Unstitched, so that I can drop a color region to bare fabric.
-37. As a stitcher, I want my manual Palette edits to survive small changes (e.g. confetti strength) where possible, and to be warned before a Color Count change discards them, so that I don't lose work silently.
+37. As a stitcher, I want my Palette and Stitch edits replayed when the Pattern is rebuilt from the photo (Color Count, speck cleanup, framing, Background), skipping any that no longer apply, so that I never lose work. Hand-placed Stitches only carry over when the grid size stays the same.
 38. As a stitcher, I want tapping a Floss to highlight its Stitches on the grid, so that I can see where it's used.
 
 ### Stitch editing
@@ -171,6 +171,9 @@ A single-page app, delivered as one self-contained HTML file served from GitHub 
 - A stitching mode for ticking off Stitches.
 
 ## Further Notes
+
+- Kept beyond the original spec, at the user's request: two plastic-canvas Preset Shapes (Round 3" 7ct, Square 2.5" 10ct), Background redo and "Keep everything", 90° turn buttons, and the Move tool on Edit.
+- The app is named StitchMaker (repository `duderosier/StitchMaker`); internal storage names keep the older `stitch-keychains` prefix so saved Patterns survive.
 
 - Glossary terms (Blank, Preset Shape, Cut-Out, Finish, Framed, Overcast, Cut Line, Margin, Ring Hole, Ring Tab, Edge Stitch, Background, Pattern, Stitch, Unstitched, Palette, Color Count, Merge, Swap, Chart, Symbol, Floss, Fabric Count) are defined in `GLOSSARY.md`; use them in code names and UI copy.
 - Preset Shape sizes are typical retail sizes, not a verified industry list; keep them in one editable data table.

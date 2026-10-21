@@ -7,12 +7,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Stitch Keys">
+<meta name="apple-mobile-web-app-title" content="StitchMaker">
 <meta name="description" content="Turn a photo into a cross-stitch keychain pattern in real DMC colors.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
-<title>Stitch Keychains</title>
+<title>StitchMaker</title>
 <style>
 :root {
   --snow: #EFE6F2;
@@ -741,16 +741,20 @@ var PatternEngine = (function () {
     return {
       v: 1, blank: blank, cols: g.cols, rows: g.rows,
       colorCount: opts.colorCount || 6, confetti: confetti,
-      cells: cells, palette: pal, overcast: overcast, past: [], future: []
+      cells: cells, palette: pal, overcast: overcast, edits: [], past: [], future: []
     };
   }
 
   // ---------- editing ----------
   var HISTORY_LIMIT = 100;
-  function snapshot(p) { return { cells: p.cells.slice(), palette: p.palette.slice(), overcast: JSON.parse(JSON.stringify(p.overcast || null)) }; }
-  function withSnap(p, snap, past, future) {
+  // The editable state of a Pattern. `edits` lists the Palette and Stitch edits since the photo was reduced,
+  // so they can be replayed when the Pattern is rebuilt (see rebase).
+  function snapshot(p) {
+    return { cells: p.cells.slice(), palette: p.palette.slice(), overcast: JSON.parse(JSON.stringify(p.overcast || null)), edits: (p.edits || []).slice() };
+  }
+  function withState(p, snap, past, future) {
     var q = {}; Object.keys(p).forEach(function (k) { q[k] = p[k]; });
-    q.cells = snap.cells; q.palette = snap.palette; q.overcast = snap.overcast; q.past = past; q.future = future;
+    q.cells = snap.cells; q.palette = snap.palette; q.overcast = snap.overcast; q.edits = snap.edits || []; q.past = past; q.future = future;
     return q;
   }
   function flossIndex(code) {
@@ -763,6 +767,7 @@ var PatternEngine = (function () {
   // Apply one Pattern edit; returns a new Pattern with the edit recorded for undo.
   function apply(p, cmd) {
     var next = snapshot(p), cells = next.cells, pal = next.palette, i;
+    next.edits.push(JSON.parse(JSON.stringify(cmd)));
     switch (cmd.type) {
       case 'merge': case 'swap': {
         var from = flossIndex(cmd.from), to = flossIndex(cmd.type === 'merge' ? cmd.into : cmd.to);
@@ -795,12 +800,12 @@ var PatternEngine = (function () {
         break;
       }
       default:
-        if (overcastApply(p, next, cmd)) break;
+        if (overcastApply(p, next, cmd)) { next.edits.pop(); break; } // Overcast settings travel with the Pattern, not the replay list
         throw new Error('Unknown edit: ' + cmd.type);
     }
     var past = (p.past || []).concat([snapshot(p)]);
     if (past.length > HISTORY_LIMIT) past = past.slice(past.length - HISTORY_LIMIT);
-    return withSnap(p, next, past, []);
+    return withState(p, next, past, []);
   }
   // ---------- Overcast: Cut Line, Ring Hole, Edge Stitches ----------
   var MAX_RING = 4, PAD = 2 + (MAX_RING + 2) + 1;
@@ -811,6 +816,18 @@ var PatternEngine = (function () {
       ring: { mode: 'outside', x: Math.floor(cols / 2), y: -3, size: 2 },
       edge: { mode: 'whole', floss: palette.length ? DMC[palette[0]].code : '310', overrides: {} }
     };
+  }
+  // Replay a Pattern's edits onto a freshly rebuilt one (new Color Count, cleanup, framing or Background).
+  // Edits that no longer apply are skipped; hand-placed Stitches only carry over onto a grid of the same size.
+  function rebase(old, base) {
+    var p = base, sameGrid = old.cols === base.cols && old.rows === base.rows;
+    (old.edits || []).forEach(function (cmd) {
+      if (!sameGrid && (cmd.type === 'paint' || cmd.type === 'erase')) return;
+      if ((cmd.type === 'merge' || cmd.type === 'swap' || cmd.type === 'unstitch') && p.palette.indexOf(flossIndex(cmd.from || cmd.floss)) < 0) return;
+      if (cmd.type === 'merge' && p.palette.indexOf(flossIndex(cmd.into)) < 0) return;
+      try { p = apply(p, cmd); } catch (err) { /* no longer applicable */ }
+    });
+    return p;
   }
   function overcastApply(p, next, cmd) {
     var o = next.overcast;
@@ -836,13 +853,13 @@ var PatternEngine = (function () {
     var hit = layoutCache && layoutCache.get(p);
     if (hit) return hit;
     var o = p.overcast, C = p.cols + 2 * PAD, R = p.rows + 2 * PAD, N = C * R, i, x, y;
-    function L(dx, dy) { return (dy + PAD) * C + (dx + PAD); }
+    function at(dx, dy) { return (dy + PAD) * C + (dx + PAD); } // design cell → layout index
     function inGrid(lx, ly) { return lx >= 0 && ly >= 0 && lx < C && ly < R; }
     var cut = new Uint8Array(N), hole = new Uint8Array(N);
     // 1. Base cut: the Preset Shape outline, or the Cut-Out's filled stitched area grown by the Margin.
     if (p.blank.shape === 'cutout') {
       var stitched = new Uint8Array(N), outside = new Uint8Array(N), stack = [];
-      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (p.cells[y * p.cols + x] >= 0) stitched[L(x, y)] = 1;
+      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (p.cells[y * p.cols + x] >= 0) stitched[at(x, y)] = 1;
       for (x = 0; x < C; x++) { stack.push(x, (R - 1) * C + x); }
       for (y = 0; y < R; y++) { stack.push(y * C, y * C + C - 1); }
       while (stack.length) {
@@ -865,14 +882,14 @@ var PatternEngine = (function () {
       }
     } else {
       var inside = blankGrid(p.blank).inside;
-      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (inside[y * p.cols + x]) cut[L(x, y)] = 1;
+      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (inside[y * p.cols + x]) cut[at(x, y)] = 1;
     }
     // 2. Ring Hole: on a Ring Tab outside the design, or cut inside it.
     var ring = o.ring, s = ring.size;
     if (ring.mode === 'inside') {
       var hx = Math.round(ring.x - s / 2), hy = Math.round(ring.y - s / 2);
       hx = Math.max(0, Math.min(p.cols - s, hx)); hy = Math.max(0, Math.min(p.rows - s, hy));
-      for (y = hy; y < hy + s; y++) for (x = hx; x < hx + s; x++) { var k = L(x, y); hole[k] = 1; cut[k] = 0; }
+      for (y = hy; y < hy + s; y++) for (x = hx; x < hx + s; x++) { var k = at(x, y); hole[k] = 1; cut[k] = 0; }
     } else if (ring.mode === 'outside') {
       var best = null, bd = Infinity, DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]];
       for (y = 0; y < R; y++) for (x = 0; x < C; x++) {
@@ -903,12 +920,12 @@ var PatternEngine = (function () {
     }
     // 3. Effective Stitches: anything inside a Ring Hole is Unstitched.
     var cells = p.cells.slice();
-    for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (hole[L(x, y)]) cells[y * p.cols + x] = -1;
+    for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) if (hole[at(x, y)]) cells[y * p.cols + x] = -1;
     // 4. Nearest Stitch's Floss for every layout cell (for auto-match).
     var nearest = new Int32Array(N).fill(-1), queue = [];
     for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) {
       var f = cells[y * p.cols + x];
-      if (f >= 0) { nearest[L(x, y)] = f; queue.push(L(x, y)); }
+      if (f >= 0) { nearest[at(x, y)] = f; queue.push(at(x, y)); }
     }
     for (var q = 0; q < queue.length; q++) {
       var cc = queue[q], qx = cc % C, qy = (cc - qx) / C;
@@ -964,50 +981,76 @@ var PatternEngine = (function () {
   }
   function canUndo(p) { return !!(p.past && p.past.length); }
   function canRedo(p) { return !!(p.future && p.future.length); }
-  function isEdited(p) { return canUndo(p); }
+  function isEdited(p) { return !!(p.edits && p.edits.length); }
   function undo(p) {
     if (!canUndo(p)) return p;
-    return withSnap(p, p.past[p.past.length - 1], p.past.slice(0, -1), [snapshot(p)].concat(p.future || []));
+    return withState(p, p.past[p.past.length - 1], p.past.slice(0, -1), [snapshot(p)].concat(p.future || []));
   }
   function redo(p) {
     if (!canRedo(p)) return p;
-    return withSnap(p, p.future[0], (p.past || []).concat([snapshot(p)]), p.future.slice(1));
+    return withState(p, p.future[0], (p.past || []).concat([snapshot(p)]), p.future.slice(1));
   }
 
   // ---------- saving ----------
   // Cells are stored against DMC codes, not table positions, so saved Patterns survive table changes.
-  function portable(snap) {
+  function toSaved(snap) {
     var codes = snap.palette.map(function (i) { return DMC[i].code; }), extra = {};
     snap.cells.forEach(function (f) { if (f >= 0 && snap.palette.indexOf(f) < 0 && !extra[f]) extra[f] = 1; });
     Object.keys(extra).forEach(function (f) { codes.push(DMC[f].code); });
     var all = codes.map(flossIndex);
-    return { codes: codes, paletteLength: snap.palette.length, cells: snap.cells.map(function (f) { return f < 0 ? -1 : all.indexOf(f); }), overcast: snap.overcast };
+    return { codes: codes, paletteLength: snap.palette.length, cells: snap.cells.map(function (f) { return f < 0 ? -1 : all.indexOf(f); }), overcast: snap.overcast, edits: snap.edits || [] };
   }
-  function unportable(o) {
+  function fromSaved(o) {
     var all = o.codes.map(flossIndex);
-    return { palette: all.slice(0, o.paletteLength), cells: o.cells.map(function (k) { return k < 0 ? -1 : all[k]; }), overcast: o.overcast || null };
+    return { palette: all.slice(0, o.paletteLength), cells: o.cells.map(function (k) { return k < 0 ? -1 : all[k]; }), overcast: o.overcast || null, edits: o.edits || [] };
   }
   function serialize(p) {
     return {
       v: 1, blank: p.blank, cols: p.cols, rows: p.rows, colorCount: p.colorCount, confetti: p.confetti,
-      now: portable(snapshot(p)), past: (p.past || []).map(portable), future: (p.future || []).map(portable)
+      now: toSaved(snapshot(p)), past: (p.past || []).map(toSaved), future: (p.future || []).map(toSaved)
     };
   }
   function deserialize(o) {
     if (!o || o.v !== 1) throw new Error('Unrecognised saved Pattern');
     var base = { v: 1, blank: o.blank, cols: o.cols, rows: o.rows, colorCount: o.colorCount, confetti: o.confetti };
-    return withSnap(base, unportable(o.now), o.past.map(unportable), o.future.map(unportable));
+    return withState(base, fromSaved(o.now), o.past.map(fromSaved), o.future.map(fromSaved));
   }
 
   // ---------- Chart ----------
   // High-contrast glyphs available in every PDF viewer's Helvetica; order = Palette order.
   // Look-alike pairs (Z/2, S/5, O/D, B/8, G/6, I/1, U/V) are deliberately avoided.
   var SYMBOLS = 'X O + # = @ % & ? * / < > ^ ~ $ A H K M N T W Y E F P R L J 3 4 7 9'.split(' ');
-  function num(n) { return String(Math.round(n * 100) / 100); }
+  // Shared display helpers (the PDF and app blocks use these instead of their own copies).
+  function formatNumber(n) { return String(Math.round(n * 100) / 100); }
+  function luminance(hex) {
+    var c = [1, 3, 5].map(function (i) { return parseInt(hex.slice(i, i + 2), 16) / 255; });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+  // One side of cell (x, y) as a line from (x0, y0) to (x1, y1), in cell units.
+  function sideSegment(x, y, side) {
+    if (side === 'n') return [x, y, x + 1, y];
+    if (side === 's') return [x, y + 1, x + 1, y + 1];
+    if (side === 'w') return [x, y, x, y + 1];
+    return [x + 1, y, x + 1, y + 1];
+  }
+  // The edge of a Blank's shape: every side of an inside cell that faces outside.
+  function shapeOutline(blank) {
+    var g = blankGrid(blank), out = [];
+    function isIn(x, y) { return x >= 0 && y >= 0 && x < g.cols && y < g.rows && g.inside[y * g.cols + x]; }
+    for (var y = 0; y < g.rows; y++) for (var x = 0; x < g.cols; x++) {
+      if (!isIn(x, y)) continue;
+      if (!isIn(x, y - 1)) out.push({ x: x, y: y, side: 'n' });
+      if (!isIn(x, y + 1)) out.push({ x: x, y: y, side: 's' });
+      if (!isIn(x - 1, y)) out.push({ x: x, y: y, side: 'w' });
+      if (!isIn(x + 1, y)) out.push({ x: x, y: y, side: 'e' });
+    }
+    return out;
+  }
+  function floss(code) { var f = DMC_BY_CODE[code]; return f ? { code: f.code, name: f.name, hex: f.hex } : null; }
   function blankLabel(blank) {
     if (blank.shape === 'preset') return presetById(blank.presetId).label;
-    if (blank.shape === 'custom') return 'Custom ' + num(blank.wIn) + '×' + num(blank.hIn) + '"';
-    return 'Cut-Out, ' + num(blank.longIn) + '" longest side';
+    if (blank.shape === 'custom') return 'Custom ' + formatNumber(blank.wIn) + '×' + formatNumber(blank.hIn) + '"';
+    return 'Cut-Out, ' + formatNumber(blank.longIn) + '" longest side';
   }
   function lines(n) { var a = []; for (var b = 0; b < n; b += 10) a.push(b); a.push(n); return a; }
   function chartLayout(p) {
@@ -1041,25 +1084,15 @@ var PatternEngine = (function () {
         var hx = i % L.cols, hy = (i - hx) / L.cols;
         out.holes.push({ x: hx - L.bounds.x0, y: hy - L.bounds.y0 });
       }
-    } else {
-      var inside = blankGrid(p.blank).inside;
-      var isIn = function (cx, cy) { return cx >= 0 && cy >= 0 && cx < p.cols && cy < p.rows && inside[cy * p.cols + cx]; };
-      for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) {
-        if (!isIn(x, y)) continue;
-        if (!isIn(x, y - 1)) out.outline.push({ x: x, y: y, side: 'n' });
-        if (!isIn(x, y + 1)) out.outline.push({ x: x, y: y, side: 's' });
-        if (!isIn(x - 1, y)) out.outline.push({ x: x, y: y, side: 'w' });
-        if (!isIn(x + 1, y)) out.outline.push({ x: x, y: y, side: 'e' });
-      }
-    }
+    } else out.outline = shapeOutline(p.blank);
     var size = L ? L.overallSize : { w: p.cols / p.blank.count, h: p.rows / p.blank.count };
     out.header = {
       blank: blankLabel(p.blank),
       finish: isOvercast(p.blank) ? 'Overcast' : 'Framed',
       count: p.blank.count + 'ct',
-      size: num(size.w) + '" × ' + num(size.h) + '" (' + w + ' × ' + h + ' stitches)'
+      size: formatNumber(size.w) + '" × ' + formatNumber(size.h) + '" (' + w + ' × ' + h + ' stitches)'
     };
-    if (L && p.blank.shape === 'cutout') out.header.design = 'Design ' + num(L.designSize.w) + '" × ' + num(L.designSize.h) + '"';
+    if (L && p.blank.shape === 'cutout') out.header.design = 'Design ' + formatNumber(L.designSize.w) + '" × ' + formatNumber(L.designSize.h) + '"';
     return out;
   }
 
@@ -1070,7 +1103,7 @@ var PatternEngine = (function () {
       v: 1, blank: blank, cols: g.cols, rows: g.rows, colorCount: opts.colorCount || 6, confetti: 0,
       cells: new Array(g.cols * g.rows).fill(-1), palette: pal,
       overcast: isOvercast(blank) ? (opts.overcast ? JSON.parse(JSON.stringify(opts.overcast)) : defaultOvercast(blank, g.cols, pal)) : null,
-      past: [], future: []
+      edits: [], past: [], future: []
     };
   }
   // Move a Pattern onto another Blank, keeping each Stitch at its cell if that cell is inside the new shape.
@@ -1098,11 +1131,12 @@ var PatternEngine = (function () {
   return {
     DMC: DMC, PRESET_SHAPES: PRESET_SHAPES, FABRIC_COUNTS: FABRIC_COUNTS, OVERCAST_COUNTS: OVERCAST_COUNTS,
     magicWand: magicWand, removeBorder: removeBorder, alphaMask: alphaMask, encodeMask: encodeMask, decodeMask: decodeMask,
+    formatNumber: formatNumber, luminance: luminance, sideSegment: sideSegment, shapeOutline: shapeOutline, floss: floss,
     chartLayout: chartLayout, SYMBOLS: SYMBOLS, blankLabel: blankLabel,
     overcastLayout: overcastLayout, edgeLegend: edgeLegend, isOvercast: isOvercast, effectiveCells: effectiveCells,
     apply: apply, undo: undo, redo: redo, canUndo: canUndo, canRedo: canRedo, isEdited: isEdited,
     serialize: serialize, deserialize: deserialize,
-    createBlankPattern: createBlankPattern, reshape: reshape,
+    createBlankPattern: createBlankPattern, reshape: reshape, rebase: rebase,
     blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette
   };
 })();
@@ -1114,8 +1148,7 @@ var ChartPdf = (function () {
   var PAGE_W = 612, PAGE_H = 792, M = 36;
 
   function hexRgb(hex) { return [parseInt(hex.slice(1, 3), 16) / 255, parseInt(hex.slice(3, 5), 16) / 255, parseInt(hex.slice(5, 7), 16) / 255]; }
-  function luminance(hex) { var c = hexRgb(hex); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; }
-  function f(n) { return (Math.round(n * 100) / 100).toString(); }
+  var luminance = PatternEngine.luminance, pdfNum = PatternEngine.formatNumber;
   // Text in WinAnsi (Latin-1 for our characters); escape PDF string specials.
   function str(s) {
     var out = '';
@@ -1130,11 +1163,11 @@ var ChartPdf = (function () {
   // Helvetica width table is not needed: we only centre short glyphs, approximated at 0.6em.
   function make(chart, opts) {
     var bw = !!opts.bw, title = opts.title || 'Keychain pattern', ops = [];
-    function fill(hex) { var c = hexRgb(hex); ops.push(f(c[0]) + ' ' + f(c[1]) + ' ' + f(c[2]) + ' rg'); }
-    function stroke(hex) { var c = hexRgb(hex); ops.push(f(c[0]) + ' ' + f(c[1]) + ' ' + f(c[2]) + ' RG'); }
-    function text(font, size, x, y, s) { ops.push('BT /' + font + ' ' + f(size) + ' Tf ' + f(x) + ' ' + f(y) + ' Td ' + str(s) + ' Tj ET'); }
-    function rect(x, y, w, h, op) { ops.push(f(x) + ' ' + f(y) + ' ' + f(w) + ' ' + f(h) + ' re ' + op); }
-    function line(x1, y1, x2, y2) { ops.push(f(x1) + ' ' + f(y1) + ' m ' + f(x2) + ' ' + f(y2) + ' l S'); }
+    function fill(hex) { var c = hexRgb(hex); ops.push(pdfNum(c[0]) + ' ' + pdfNum(c[1]) + ' ' + pdfNum(c[2]) + ' rg'); }
+    function stroke(hex) { var c = hexRgb(hex); ops.push(pdfNum(c[0]) + ' ' + pdfNum(c[1]) + ' ' + pdfNum(c[2]) + ' RG'); }
+    function text(font, size, x, y, s) { ops.push('BT /' + font + ' ' + pdfNum(size) + ' Tf ' + pdfNum(x) + ' ' + pdfNum(y) + ' Td ' + str(s) + ' Tj ET'); }
+    function rect(x, y, w, h, op) { ops.push(pdfNum(x) + ' ' + pdfNum(y) + ' ' + pdfNum(w) + ' ' + pdfNum(h) + ' re ' + op); }
+    function line(x1, y1, x2, y2) { ops.push(pdfNum(x1) + ' ' + pdfNum(y1) + ' m ' + pdfNum(x2) + ' ' + pdfNum(y2) + ' l S'); }
 
     // Header
     fill('#34193A');
@@ -1178,13 +1211,7 @@ var ChartPdf = (function () {
       text('F2', fs, X(c.x) + (cs - fs * 0.62) / 2, Y(c.y + 1) + (cs - fs * 0.7) / 2, c.symbol);
     });
     // Outline / Edge Stitches
-    function seg(o) {
-      var x = X(o.x), y = Y(o.y), xe = X(o.x + 1), ye = Y(o.y + 1);
-      if (o.side === 'n') return [x, y, xe, y];
-      if (o.side === 's') return [x, ye, xe, ye];
-      if (o.side === 'w') return [x, y, x, ye];
-      return [xe, y, xe, ye];
-    }
+    function seg(o) { var u = PatternEngine.sideSegment(o.x, o.y, o.side); return [X(u[0]), Y(u[1]), X(u[2]), Y(u[3])]; }
     ops.push('1 J');
     if (chart.edges.length) {
       var multi = chart.edgeLegend.length > 1;
@@ -1228,7 +1255,7 @@ var ChartPdf = (function () {
       text('F1', 9, x + 58, y, r.name + '  (' + r.count + (e.edge ? ' edge stitches)' : ' stitches)'));
     });
     fill('#7A6380');
-    text('F1', 6.5, M, M - 14, 'Color data: craft-color-codes by MakeBead (makebead.com), CC BY 4.0. Made with Stitch Keychains.');
+    text('F1', 6.5, M, M - 14, 'Color data: craft-color-codes by MakeBead (makebead.com), CC BY 4.0. Made with StitchMaker.');
 
     // Assemble PDF
     var content = ops.join('\n');
@@ -1262,7 +1289,8 @@ var ChartPdf = (function () {
   var MAX_PHOTO = 1024;   // longest side of the working photo
   function $(s, root) { return (root || document).querySelector(s); }
   function $$(s, root) { return Array.prototype.slice.call((root || document).querySelectorAll(s)); }
-  function dmc(code) { for (var i = 0; i < E.DMC.length; i++) if (E.DMC[i].code === code) return E.DMC[i]; return null; }
+  var dmc = E.floss, fmt = E.formatNumber, lum = E.luminance;
+  var DEFAULT_FLOSS = '310'; // black: the pencil's color when nothing else is picked
 
   var app = {
     id: null, name: 'Untitled keychain',
@@ -1284,7 +1312,7 @@ var ChartPdf = (function () {
     app.name = 'My drawing'; $('#name').value = app.name;
     app.view = { zoom: 1, panX: 0, panY: 0 };
     app.pattern = E.createBlankPattern({ blank: app.blank, palette: STARTER_PALETTE, colorCount: app.colorCount });
-    app.floss = '310'; app.selected = null; app.tool = 'pencil';
+    app.floss = DEFAULT_FLOSS; app.selected = null; app.tool = 'pencil';
     setTab('edit');
     toast('Pick a color below and draw. Pinch to zoom in.');
     scheduleSave();
@@ -1306,7 +1334,7 @@ var ChartPdf = (function () {
       app.view = { zoom: 1, panX: 0, panY: 0 }; app.bgView = { zoom: 1, panX: 0, panY: 0 };
       fitFrame();
       app.pattern = null;
-      rebuild(true);
+      rebuild();
       setTab('background');
       toast('Photo added. Remove the Background, or skip to Colors.');
     };
@@ -1358,24 +1386,20 @@ var ChartPdf = (function () {
   }
 
   // ---------- rebuilding the Pattern ----------
-  // Redoing colors from the photo discards Palette and Stitch edits, so ask once.
-  function guardEdits() {
-    if (!app.pattern || !E.isEdited(app.pattern)) return true;
-    if (!confirm('This redoes the colors from the photo and discards your Palette and Stitch edits. Continue?')) return false;
-    app.pattern = Object.assign({}, app.pattern, { past: [], future: [] });
-    return true;
-  }
-  function rebuild(force) {
+  // Rebuild the Pattern from the photo, then replay the Palette and Stitch edits made since (engine rebase).
+  function rebuild() {
     if (!app.photo) return;
-    if (!force && app.pattern && E.isEdited(app.pattern)) return;
-    var prev = app.pattern && app.pattern.overcast;
-    app.pattern = E.createPattern({
+    var old = app.pattern, prev = old && old.overcast;
+    var base = E.createPattern({
       image: framedImage(), blank: app.blank, colorCount: app.colorCount, confetti: app.confetti,
       overcast: E.isOvercast(app.blank) && prev ? prev : undefined
     });
+    app.pattern = old && old.edits && old.edits.length ? E.rebase(old, base) : base;
+    if (old && (old.cols !== base.cols || old.rows !== base.rows) && old.edits.some(function (c) { return c.type === 'paint' || c.type === 'erase'; }))
+      toast('Color edits kept. Hand-placed stitches stay with the old size.');
     if (app.selected && !E.palette(app.pattern).some(function (f) { return f.code === app.selected; })) app.selected = null;
     if (!app.floss || !E.palette(app.pattern).some(function (f) { return f.code === app.floss; })) {
-      var first = E.palette(app.pattern)[0]; app.floss = first ? first.code : '310';
+      var first = E.palette(app.pattern)[0]; app.floss = first ? first.code : DEFAULT_FLOSS;
     }
     changed();
   }
@@ -1383,7 +1407,7 @@ var ChartPdf = (function () {
   function queueRebuild() {
     if (rebuildQueued) return;
     rebuildQueued = true;
-    requestAnimationFrame(function () { rebuildQueued = false; rebuild(true); });
+    requestAnimationFrame(function () { rebuildQueued = false; rebuild(); });
   }
   function edit(cmd) {
     if (!app.pattern) return;
@@ -1419,18 +1443,10 @@ var ChartPdf = (function () {
     return { cs: cs, R: R, s: s, toX: function (x) { return ox + (x - R.x0) * cs; }, toY: function (y) { return oy + (y - R.y0) * cs; },
       cellX: function (px) { return (px - ox) / cs + R.x0; }, cellY: function (py) { return (py - oy) / cs + R.y0; } };
   }
-  // Just the shape's edge: the sides of inside cells that face outside.
+  // Just the shape's edge, as a canvas path.
   function outlinePath(G) {
-    var g = E.blankGrid(app.blank), path = new Path2D();
-    function isIn(x, y) { return x >= 0 && y >= 0 && x < g.cols && y < g.rows && g.inside[y * g.cols + x]; }
-    for (var y = 0; y < g.rows; y++) for (var x = 0; x < g.cols; x++) {
-      if (!isIn(x, y)) continue;
-      var X0 = G.toX(x), Y0 = G.toY(y), X1 = G.toX(x + 1), Y1 = G.toY(y + 1);
-      if (!isIn(x, y - 1)) { path.moveTo(X0, Y0); path.lineTo(X1, Y0); }
-      if (!isIn(x, y + 1)) { path.moveTo(X0, Y1); path.lineTo(X1, Y1); }
-      if (!isIn(x - 1, y)) { path.moveTo(X0, Y0); path.lineTo(X0, Y1); }
-      if (!isIn(x + 1, y)) { path.moveTo(X1, Y0); path.lineTo(X1, Y1); }
-    }
+    var path = new Path2D();
+    E.shapeOutline(app.blank).forEach(function (o) { var s2 = edgeSeg(G, o.x, o.y, o.side); path.moveTo(s2[0], s2[1]); path.lineTo(s2[2], s2[3]); });
     return path;
   }
   function insidePath(G) {
@@ -1564,14 +1580,7 @@ var ChartPdf = (function () {
       edge: { ring: 'Tap where the Ring Hole goes', edgepaint: 'Tap edge stitches to paint them' } };
     setHint(app.tab === 'edit' ? hints.edit[app.tool] : app.tab === 'edge' && L ? hints.edge[app.edgeTool] : '');
   }
-  function edgeSeg(G, x, y, side) {
-    var X0 = G.toX(x), Y0 = G.toY(y), X1 = G.toX(x + 1), Y1 = G.toY(y + 1);
-    if (side === 'n') return [X0, Y0, X1, Y0];
-    if (side === 's') return [X0, Y1, X1, Y1];
-    if (side === 'w') return [X0, Y0, X0, Y1];
-    return [X1, Y0, X1, Y1];
-  }
-  function fmt(n) { return String(Math.round(n * 100) / 100); }
+  function edgeSeg(G, x, y, side) { var u = E.sideSegment(x, y, side); return [G.toX(u[0]), G.toY(u[1]), G.toX(u[2]), G.toY(u[3])]; }
   function renderReadout() {
     var p = app.pattern;
     if (!p) { $('#readout').textContent = ''; return; }
@@ -1675,10 +1684,8 @@ var ChartPdf = (function () {
   function beginDraw(x, y) {
     var g = gesture;
     if (g.kind === 'frame') {
-      if (!guardEdits()) { gesture = null; return; }
       g.frame = Object.assign({}, app.frame);
     } else if (viewMode() === 'bg') {
-      if (!guardEdits()) { gesture = null; return; }
       pushMask(); g.sub = 'brush';
       var B = bgGeometry(); brushAt((x - B.ox) / B.sc, (y - B.oy) / B.sc);
     } else if (app.tab === 'edit') {
@@ -1720,10 +1727,9 @@ var ChartPdf = (function () {
     if (viewMode() === 'bg') {
       var B = bgGeometry(), px = (x - B.ox) / B.sc, py = (y - B.oy) / B.sc;
       if (px < 0 || py < 0 || px >= app.photo.width || py >= app.photo.height) return;
-      if (!guardEdits()) return;
       pushMask();
-      var region2 = E.magicWand(app.photoData, px, py, app.tolerance);
-      for (var i = 0; i < region2.length; i++) if (region2[i]) app.mask[i] = 1;
+      var wandRegion = E.magicWand(app.photoData, px, py, app.tolerance);
+      for (var i = 0; i < wandRegion.length; i++) if (wandRegion[i]) app.mask[i] = 1;
       maskChanged();
     } else if (app.tab === 'edit') {
       var c = cellUnder(x, y), hit = inGrid(c) && E.cellAt(app.pattern, c[0], c[1]);
@@ -1738,7 +1744,7 @@ var ChartPdf = (function () {
   function addStroke(c) {
     if (!inGrid(c)) return;
     gesture.cells.push(c);
-    var cmd = app.tool === 'eraser' ? { type: 'erase', cells: gesture.cells } : { type: 'paint', floss: app.floss || '310', cells: gesture.cells };
+    var cmd = app.tool === 'eraser' ? { type: 'erase', cells: gesture.cells } : { type: 'paint', floss: app.floss || DEFAULT_FLOSS, cells: gesture.cells };
     app.pattern = E.apply(gesture.base, cmd);
     render();
   }
@@ -1751,7 +1757,7 @@ var ChartPdf = (function () {
     });
     if (!best || bd > Math.max(18, G.cs * 0.9) || gesture.segs.indexOf(best.id) >= 0) return;
     gesture.segs.push(best.id);
-    app.pattern = E.apply(gesture.base, { type: 'edgePaint', floss: app.floss || '310', segments: gesture.segs });
+    app.pattern = E.apply(gesture.base, { type: 'edgePaint', floss: app.floss || DEFAULT_FLOSS, segments: gesture.segs });
     render();
   }
 
@@ -1779,7 +1785,7 @@ var ChartPdf = (function () {
     }
     render();
   }
-  function maskChanged() { refreshMasked(); rebuild(true); }
+  function maskChanged() { refreshMasked(); rebuild(); }
 
   // ---------- panels ----------
   var SHAPE_ICONS = {
@@ -1803,7 +1809,6 @@ var ChartPdf = (function () {
     $('#shapes').innerHTML = html;
   }
   function setBlank(next) {
-    if (app.photo && !guardEdits()) { renderPanels(); return; }
     var drawing = !app.photo && app.pattern;
     var oldG = E.blankGrid(app.blank);
     var finishes = E.allowedFinishes(next);
@@ -1814,7 +1819,7 @@ var ChartPdf = (function () {
     if (app.frame) { var g = E.blankGrid(next); app.frame.s = app.frame.s * oldG.cols / g.cols; app.frame.fit = Math.min(app.photo.width / g.cols, app.photo.height / g.rows); }
     if (drawing) { app.pattern = E.reshape(app.pattern, next); changed(); return; }
     if (app.pattern && !E.isOvercast(next)) app.pattern = Object.assign({}, app.pattern, { overcast: null });
-    if (app.photo) rebuild(true); else changed();
+    if (app.photo) rebuild(); else changed();
   }
   function pressed(container, attr, value) {
     $$('[' + attr + ']', container).forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute(attr) === String(value))); });
@@ -1890,7 +1895,6 @@ var ChartPdf = (function () {
     $('#edgeStrip').hidden = app.edgeTool !== 'edgepaint';
     $('#edgeStrip').innerHTML = stripHtml(pal);
   }
-  function lum(hex) { var c = [1, 3, 5].map(function (i) { return parseInt(hex.slice(i, i + 2), 16) / 255; }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; }
   function syncPhotoInputs() {
     if (!app.frame) return;
     var r = ((app.frame.rot + 180) % 360 + 360) % 360 - 180;
@@ -1955,6 +1959,7 @@ var ChartPdf = (function () {
     if (dbp) return dbp;
     dbp = new Promise(function (resolve, reject) {
       if (!window.indexedDB) { reject(new Error('This browser cannot store patterns.')); return; }
+      // Storage names predate the StitchMaker name; keep them so saved patterns survive.
       var req = indexedDB.open('stitch-keychains', 1);
       req.onupgradeneeded = function () { req.result.createObjectStore('patterns', { keyPath: 'id' }); };
       req.onsuccess = function () { resolve(req.result); };
@@ -1962,7 +1967,7 @@ var ChartPdf = (function () {
     });
     return dbp;
   }
-  function tx(mode, fn) {
+  function withStore(mode, fn) {
     return db().then(function (d) {
       return new Promise(function (resolve, reject) {
         var t = d.transaction('patterns', mode), store = t.objectStore('patterns'), out = fn(store);
@@ -1995,20 +2000,20 @@ var ChartPdf = (function () {
         mask: app.mask ? E.encodeMask(app.mask) : null, blank: app.blank, frame: app.frame, colorCount: app.colorCount, confetti: app.confetti,
         pattern: E.serialize(app.pattern)
       };
-      return tx('readwrite', function (s) { s.put(rec); });
+      return withStore('readwrite', function (s) { s.put(rec); });
     }).then(function () {
       try { localStorage.setItem('stitch-keychains:current', id); } catch (e) { /* private mode */ }
     }).catch(function (err) { toast('Could not save on this phone: ' + (err && err.message || 'storage error') + '. Free up space and try again.'); });
   }
   function openSaved(id) {
-    return tx('readonly', function (s) { return s.get(id); }).then(function (rec) {
+    return withStore('readonly', function (s) { return s.get(id); }).then(function (rec) {
       if (!rec) return;
       if (!rec.photo) { // hand-drawn
         app.id = rec.id; app.name = rec.name; $('#name').value = rec.name;
         app.blank = rec.blank; app.frame = null; app.colorCount = rec.colorCount; app.confetti = rec.confetti;
         app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.maskPast = []; app.maskFuture = [];
         app.pattern = E.deserialize(rec.pattern);
-        var f0 = E.palette(app.pattern)[0]; app.floss = f0 ? f0.code : '310'; app.selected = null;
+        var f0 = E.palette(app.pattern)[0]; app.floss = f0 ? f0.code : DEFAULT_FLOSS; app.selected = null;
         app.view = { zoom: 1, panX: 0, panY: 0 };
         try { localStorage.setItem('stitch-keychains:current', rec.id); } catch (e) { /* ignore */ }
         setTab('edit');
@@ -2021,7 +2026,7 @@ var ChartPdf = (function () {
         app.blank = rec.blank; app.frame = rec.frame; app.colorCount = rec.colorCount; app.confetti = rec.confetti;
         setPhoto(c, E.decodeMask(rec.mask, c.width * c.height));
         app.pattern = E.deserialize(rec.pattern);
-        var first = E.palette(app.pattern)[0]; app.floss = first ? first.code : '310'; app.selected = null;
+        var first = E.palette(app.pattern)[0]; app.floss = first ? first.code : DEFAULT_FLOSS; app.selected = null;
         app.view = { zoom: 1, panX: 0, panY: 0 }; app.bgView = { zoom: 1, panX: 0, panY: 0 };
         try { localStorage.setItem('stitch-keychains:current', rec.id); } catch (e) { /* ignore */ }
         setTab('colors');
@@ -2029,7 +2034,7 @@ var ChartPdf = (function () {
     }).catch(function (err) { toast('Could not open that pattern: ' + (err && err.message || 'storage error')); });
   }
   function listSaved() {
-    return tx('readonly', function (s) { return s.getAll(); }).then(function (all) {
+    return withStore('readonly', function (s) { return s.getAll(); }).then(function (all) {
       all.sort(function (a, b) { return b.updatedAt - a.updatedAt; });
       $('#savedList').innerHTML = all.length ? all.map(function (r) {
         return '<div class="saved"><img alt="" src="' + r.thumb + '"><div><div class="t">' + esc(r.name) + '</div><div class="d">' + new Date(r.updatedAt).toLocaleString() + '</div></div>' +
@@ -2042,17 +2047,17 @@ var ChartPdf = (function () {
     var t = ev.target;
     if (t.dataset.open) { $('#patterns').close(); openSaved(t.dataset.open); }
     else if (t.dataset.rename) {
-      tx('readonly', function (s) { return s.get(t.dataset.rename); }).then(function (rec) {
+      withStore('readonly', function (s) { return s.get(t.dataset.rename); }).then(function (rec) {
         var nm = prompt('Rename pattern', rec.name); if (!nm) return;
         rec.name = nm.slice(0, 60);
         if (rec.id === app.id) { app.name = rec.name; $('#name').value = rec.name; }
-        return tx('readwrite', function (s) { s.put(rec); }).then(listSaved);
+        return withStore('readwrite', function (s) { s.put(rec); }).then(listSaved);
       });
     } else if (t.dataset.delete) {
       if (!confirm('Delete this pattern from this phone?')) return;
       var id = t.dataset.delete;
       if (id === app.id) { clearTimeout(saveTimer); startNew(); }
-      tx('readwrite', function (s) { s.delete(id); }).then(listSaved);
+      withStore('readwrite', function (s) { s.delete(id); }).then(listSaved);
     }
   });
 
@@ -2080,7 +2085,7 @@ var ChartPdf = (function () {
     if (t.dataset.shape === 'cutout') { setBlank({ shape: 'cutout', longIn: +$('#longIn').value || 2, count: app.blank.count, finish: 'overcast' }); return; }
     if (t.dataset.finish) { setBlank(Object.assign({}, app.blank, { finish: t.dataset.finish })); return; }
     if (t.dataset.bgtool) { app.bgTool = t.dataset.bgtool; renderPanels(); render(); return; }
-    if (t.dataset.confetti) { if (!app.photo || !guardEdits()) return; app.confetti = +t.dataset.confetti; rebuild(true); return; }
+    if (t.dataset.confetti) { if (!app.photo) return; app.confetti = +t.dataset.confetti; rebuild(); return; }
     if (t.dataset.floss) { app.selected = app.selected === t.dataset.floss ? null : t.dataset.floss; if (app.selected) app.floss = app.selected; renderPanels(); render(); return; }
     if (t.dataset.tool && t.closest('#tool')) { setTool(t.dataset.tool); return; }
     if (t.dataset.tool && t.closest('#edgeTool')) { app.edgeTool = t.dataset.tool; renderPanels(); render(); return; }
@@ -2094,15 +2099,15 @@ var ChartPdf = (function () {
       case 'start-blank':
         if (app.pattern && !app.photo && E.isEdited(app.pattern) && !confirm('Start a new blank drawing? This one stays in My patterns.')) break;
         startBlank(); break;
-      case 'fit': if (app.photo && guardEdits()) { fitFrame(); rebuild(true); } break;
+      case 'fit': if (app.photo) { fitFrame(); rebuild(); } break;
       case 'rot-left': case 'rot-right':
-        if (app.photo && guardEdits()) { app.frame.rot += act === 'rot-left' ? -90 : 90; rebuild(true); } break;
+        if (app.photo) { app.frame.rot += act === 'rot-left' ? -90 : 90; rebuild(); } break;
       case 'remove-border':
-        if (app.photo && guardEdits()) { pushMask(); var m = E.removeBorder(app.photoData, app.tolerance); for (var i = 0; i < m.length; i++) if (m[i]) app.mask[i] = 1; maskChanged(); }
+        if (app.photo) { pushMask(); var m = E.removeBorder(app.photoData, app.tolerance); for (var i = 0; i < m.length; i++) if (m[i]) app.mask[i] = 1; maskChanged(); }
         break;
-      case 'bg-undo': if (app.maskPast.length && guardEdits()) { app.maskFuture.push(app.mask); app.mask = app.maskPast.pop(); maskChanged(); } break;
-      case 'bg-redo': if (app.maskFuture.length && guardEdits()) { app.maskPast.push(app.mask); app.mask = app.maskFuture.pop(); maskChanged(); } break;
-      case 'bg-clear': if (app.photo && guardEdits()) { pushMask(); app.mask = new Uint8Array(app.mask.length); maskChanged(); } break;
+      case 'bg-undo': if (app.maskPast.length) { app.maskFuture.push(app.mask); app.mask = app.maskPast.pop(); maskChanged(); } break;
+      case 'bg-redo': if (app.maskFuture.length) { app.maskPast.push(app.mask); app.mask = app.maskFuture.pop(); maskChanged(); } break;
+      case 'bg-clear': if (app.photo) { pushMask(); app.mask = new Uint8Array(app.mask.length); maskChanged(); } break;
       case 'merge': {
         var others = E.palette(app.pattern).map(function (f) { return f.code; }).filter(function (c) { return c !== app.selected; });
         if (!others.length) { toast('There is no other color to merge into.'); break; }
@@ -2129,12 +2134,12 @@ var ChartPdf = (function () {
   $('#count').addEventListener('change', function () { setBlank(Object.assign({}, app.blank, { count: +this.value })); });
   ['#customW', '#customH'].forEach(function (s) { $(s).addEventListener('change', function () { setBlank({ shape: 'custom', wIn: Math.max(0.5, +$('#customW').value || 2), hIn: Math.max(0.5, +$('#customH').value || 2), count: app.blank.count, finish: app.blank.finish }); }); });
   $('#longIn').addEventListener('change', function () { setBlank({ shape: 'cutout', longIn: Math.max(0.5, +this.value || 2), count: app.blank.count, finish: 'overcast' }); });
-  $('#rot').addEventListener('input', function () { if (!app.frame) return; if (!guardEdits()) { syncPhotoInputs(); return; } app.frame.rot = +this.value; queueRebuild(); render(); });
-  $('#zoom').addEventListener('input', function () { if (!app.frame) return; if (!guardEdits()) { syncPhotoInputs(); return; } app.frame.s = app.frame.fit / Math.pow(20, this.value / 100); queueRebuild(); render(); });
+  $('#rot').addEventListener('input', function () { if (!app.frame) return; app.frame.rot = +this.value; queueRebuild(); render(); });
+  $('#zoom').addEventListener('input', function () { if (!app.frame) return; app.frame.s = app.frame.fit / Math.pow(20, this.value / 100); queueRebuild(); render(); });
   $('#tol').addEventListener('input', function () { app.tolerance = +this.value; });
   $('#brush').addEventListener('input', function () { app.brush = +this.value; });
   $('#colorCount').addEventListener('input', function () {
-    if (!app.photo || !guardEdits()) { this.value = app.colorCount; return; }
+    if (!app.photo) { this.value = app.colorCount; return; }
     app.colorCount = +this.value; $('#ccVal').textContent = this.value; queueRebuild();
   });
   $$('.js-compare').forEach(function (b) { b.addEventListener('click', function () { app.showPhoto = !app.showPhoto; render(); }); });

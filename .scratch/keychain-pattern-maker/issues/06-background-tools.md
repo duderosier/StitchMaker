@@ -4,11 +4,15 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Magic wand removes connected similar colors with a tolerance slider
-- [ ] Remove-border clears edge-connected Background
-- [ ] Brush erases and restores with adjustable size
-- [ ] Transparent PNG areas become Background
-- [ ] Background edits can be undone
-- [ ] Background never consumes Palette slots
+- [x] Magic wand removes connected similar colors with a tolerance slider
+- [x] Remove-border clears edge-connected Background
+- [x] Brush erases and restores with adjustable size
+- [x] Transparent PNG areas become Background
+- [x] Background edits can be undone
+- [x] Background never consumes Palette slots
+
+## Comments
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).

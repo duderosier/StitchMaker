@@ -3,7 +3,7 @@
 Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8 (Chrome; folded and unfolded) before calling a release done.
 
 ## Install and offline
-- [ ] Add to Home Screen; the app opens full-screen with the stitched icon.
+- [ ] Add to Home Screen (Android: Install app); it is named StitchMaker and opens full-screen with the stitched heart icon.
 - [ ] Turn on airplane mode, open the app from the home screen: it loads and works.
 
 ## Photo
@@ -22,7 +22,7 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 ## Colors and editing
 - [ ] The Colors slider updates the Pattern while dragging; specks cleanup levels visibly differ.
 - [ ] Tapping a Floss highlights its Stitches; Merge, Swap (search "310" and "black") and Leave unstitched work.
-- [ ] After editing, moving the Colors slider asks before discarding edits; Cancel keeps them.
+- [ ] After editing (merge a color, paint a few Stitches), moving the Colors slider or the photo keeps those edits.
 - [ ] Edit: single cells are easy to hit after pinch-zooming; pencil, eraser, Pick color, + Floss, two-finger pan/zoom, Undo/Redo in the top bar.
 
 ## Blank and Overcast

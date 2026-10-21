@@ -4,10 +4,14 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Palette size never exceeds the Color Count
-- [ ] No dithering: block images produce flat regions
-- [ ] No duplicate Flosses in the Palette
-- [ ] Confetti cleanup removes isolated Stitches; strength adjustable incl. off
-- [ ] Before/after toggle works
+- [x] Palette size never exceeds the Color Count
+- [x] No dithering: block images produce flat regions
+- [x] No duplicate Flosses in the Palette
+- [x] Confetti cleanup removes isolated Stitches; strength adjustable incl. off
+- [x] Before/after toggle works
+
+## Comments
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).

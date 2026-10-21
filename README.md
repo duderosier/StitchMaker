@@ -1,4 +1,4 @@
-# Stitch Keychains
+# StitchMaker
 
 Turn a photo into a cross-stitch keychain pattern in real DMC colors, on your phone. Everything runs in the browser; photos never leave the device. See `GLOSSARY.md` for the vocabulary and `docs/adr/` for why it is one HTML file.
 

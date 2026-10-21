@@ -4,9 +4,13 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Closing and reopening restores the current Pattern
-- [ ] My patterns: open, rename, delete
-- [ ] Storage failures are reported, not fatal
-- [ ] Engine state JSON round-trips exactly
+- [x] Closing and reopening restores the current Pattern
+- [x] My patterns: open, rename, delete
+- [x] Storage failures are reported, not fatal
+- [x] Engine state JSON round-trips exactly
+
+## Comments
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).

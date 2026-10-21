@@ -4,9 +4,13 @@
 
 **Blocked by:** 08, 11
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Whole-edge mode uses one Floss
-- [ ] Auto-match takes each neighbouring Stitch's Floss
-- [ ] Individual Edge Stitch overrides persist across mode switches
-- [ ] Chart legend Edge section reflects the result
+- [x] Whole-edge mode uses one Floss
+- [x] Auto-match takes each neighbouring Stitch's Floss
+- [x] Individual Edge Stitch overrides persist across mode switches
+- [x] Chart legend Edge section reflects the result
+
+## Comments
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).

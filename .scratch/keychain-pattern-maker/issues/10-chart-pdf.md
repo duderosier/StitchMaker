@@ -4,10 +4,14 @@
 
 **Blocked by:** 03, 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] PDF is one Letter page
-- [ ] Each Floss has a unique Symbol; legend counts match the grid
-- [ ] Black-and-white toggle renders symbols only
-- [ ] Header shows name, Blank, Fabric Count, finished size
-- [ ] Share sheet on iOS, download fallback elsewhere
+- [x] PDF is one Letter page
+- [x] Each Floss has a unique Symbol; legend counts match the grid
+- [x] Black-and-white toggle renders symbols only
+- [x] Header shows name, Blank, Fabric Count, finished size
+- [x] Share sheet on iOS, download fallback elsewhere
+
+## Comments
+
+- 2026-10-20: Implemented and live on https://duderosier.github.io/StitchMaker/ (see git log).
