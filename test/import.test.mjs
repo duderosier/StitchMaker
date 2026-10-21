@@ -8,6 +8,15 @@ const E = loadEngine();
 // thin grey gridlines with bold lines every 10, all on a page with a margin. kind(x, y) returns
 // null for plain paper, or { tint: [r, g, b], symbol: 'x' | 'dot' | 'tri' }.
 const YELLOW = [246, 238, 160], BLUE = [190, 214, 222], WHITE = [255, 255, 255];
+// Is (a, b), from the middle of an S-wide square, on the symbol's ink?
+function onSymbol(symbol, a, b, S) {
+  const r = S * 0.28;
+  return symbol === 'x' ? (Math.abs(Math.abs(a) - Math.abs(b)) < 1.2 && Math.abs(a) < r)
+    : symbol === 'plus' ? ((Math.abs(a) < 1.2 && Math.abs(b) < r) || (Math.abs(b) < 1.2 && Math.abs(a) < r))
+    : symbol === 'bar' ? (Math.abs(a) < r && Math.abs(b) < 1.8)
+    : symbol === 'dot' ? (a * a + b * b < (S * 0.12) ** 2)
+    : (b > -r && b < r && Math.abs(a) < (b + r) / 2 && b > r - 2.2) || (b > -r && b < r && Math.abs(Math.abs(a) - (b + r) / 2) < 1.1);
+}
 function chart(cols, rows, kind, { cell = 14, margin = 30, warp = null, lines = [], knots = [], knotColor = [150, 30, 40], knotR = 0.3 } = {}) {
   const W = cols * cell + 2 * margin, H = rows * cell + 2 * margin;
   const data = new Uint8ClampedArray(W * H * 4).fill(255);
@@ -28,15 +37,7 @@ function chart(cols, rows, kind, { cell = 14, margin = 30, warp = null, lines = 
       k = first ? k.a : k.b;
     }
     let rgb = k ? k.tint : WHITE;
-    if (k && k.symbol) {
-      const a = iu - S / 2, b = iv - S / 2, r = S * 0.28;
-      const on = k.symbol === 'x' ? (Math.abs(Math.abs(a) - Math.abs(b)) < 1.2 && Math.abs(a) < r)
-        : k.symbol === 'plus' ? ((Math.abs(a) < 1.2 && Math.abs(b) < r) || (Math.abs(b) < 1.2 && Math.abs(a) < r))
-        : k.symbol === 'bar' ? (Math.abs(a) < r && Math.abs(b) < 1.8)
-        : k.symbol === 'dot' ? (a * a + b * b < (S * 0.12) ** 2)
-        : (b > -r && b < r && Math.abs(a) < (b + r) / 2 && b > r - 2.2) || (b > -r && b < r && Math.abs(Math.abs(a) - (b + r) / 2) < 1.1);
-      if (on) rgb = [40, 40, 50];
-    }
+    if (k && k.symbol && onSymbol(k.symbol, iu - S / 2, iv - S / 2, S)) rgb = [40, 40, 50];
     put(u, v, rgb);
   }
   // gridlines
@@ -297,6 +298,44 @@ test('symbols are told apart on an angled photo too', () => {
   const warp = (u, v) => { const w = g * u + h * v + 1; return [(1.02 * u + 0.08 * v + 60) / w, (-0.05 * u + 0.98 * v + 50) / w]; };
   const { image, corners } = chart(12, 10, symbolKind, { cell, margin: 80, warp });
   checkSymbols(E.readChart(image, { corners, cols: 12, rows: 10 }));
+});
+
+// The black-and-white chart with its key to the right: each symbol drawn larger in a box, its name and DMC number
+// beside it (as text recognition would report them: words with boxes), gridline rulers above the chart.
+function chartWithKey(rows, opts = {}) {
+  const { image, corners } = chart(12, 10, symbolKind, opts), K = 26, left = image.width + 20, W = left + 200, H = image.height + 60;
+  const data = new Uint8ClampedArray(W * H * 4).fill(255);
+  for (let y = 0; y < H; y++) data.set(image.data.subarray(y * image.width * 4, (y + 1) * image.width * 4), y * W * 4);
+  const words = [{ text: '10', bbox: { x0: 40, y0: 4, x1: 52, y1: 16 } }, { text: '20', bbox: { x0: 80, y0: 4, x1: 92, y1: 16 } }, { text: '30', bbox: { x0: 120, y0: 4, x1: 132, y1: 16 } }];
+  rows.forEach(([symbol, code, name], i) => {
+    const top = 30 + i * (K + 8);
+    for (let y = 0; y < K; y++) for (let x = 0; x < K; x++) {
+      const frame = x === 0 || y === 0 || x === K - 1 || y === K - 1, ink = frame || (x > 3 && y > 3 && x < K - 4 && y < K - 4 && onSymbol(symbol, x - K / 2 + 0.5, y - K / 2 + 0.5, K * 0.75));
+      if (ink) data.set([20, 20, 20, 255], ((top + y) * W + left + x) * 4);
+    }
+    const ty = top + K / 2 - 6;
+    words.push({ text: name, bbox: { x0: left + 50, y0: ty, x1: left + 50 + 10 * name.length, y1: ty + 12 } });
+    words.push({ text: code, bbox: { x0: left + 150, y0: ty, x1: left + 150 + 9 * code.length, y1: ty + 12 } });
+  });
+  return { image: { width: W, height: H, data }, corners, words };
+}
+const KEY = [['tri', '798', 'Blue'], ['dot', '725', 'Topaz'], ['x', '310', 'Black'], ['bar', '321', 'Red'], ['plus', 'White', 'Chalk']];
+
+test('a key drawn as pictures matches each symbol to the DMC number beside its icon', () => {
+  const { image, corners, words } = chartWithKey(KEY);
+  const icons = E.keyIcons(image, words);
+  assert.deepEqual(icons.map(i => i.code), ['798', '725', '310', '321', 'Blanc'], 'one icon per key row; rulers are not key rows');
+  const read = E.readChart(image, { corners, cols: 12, rows: 10 }), g = E.keyIconGuesses(image, read, icons);
+  const codeAt = (x, y) => g[read.cells[y * read.cols + x]];
+  assert.deepEqual([codeAt(0, 0), codeAt(11, 0), codeAt(0, 4), codeAt(11, 4), codeAt(5, 6), codeAt(0, 9)], ['310', 'Blanc', '798', '321', '725', null]);
+});
+
+test('a number written again below the key (a backstitch note) keeps its key row', () => {
+  const { image, words } = chartWithKey(KEY);
+  words.push({ text: 'Lines:', bbox: { x0: 200, y0: 210, x1: 240, y1: 222 } }, { text: '310', bbox: { x0: 250, y0: 210, x1: 277, y1: 222 } }, { text: 'Black/310', bbox: { x0: 290, y0: 230, x1: 350, y1: 242 } });
+  const icons = E.keyIcons(image, words);
+  assert.equal(icons.filter(i => i.code === '310').length, 1);
+  assert.ok(icons.find(i => i.code === '310').box[0] > 200, 'the icon on the key row, not marks beside the note');
 });
 
 test('colored charts are still grouped by color, not split by symbol', () => {

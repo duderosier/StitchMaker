@@ -1455,6 +1455,16 @@ var PatternEngine = (function () {
     var i = (py * img.width + px) * 4, d = img.data;
     return [d[i], d[i + 1], d[i + 2]];
   }
+  // Between pixels, for small marks: a symbol a few pixels across lands differently in each cell.
+  function pixelLerp(img, x, y) {
+    var x0 = Math.max(0, Math.min(img.width - 2, Math.floor(x))), y0 = Math.max(0, Math.min(img.height - 2, Math.floor(y)));
+    var fx = Math.max(0, Math.min(1, x - x0)), fy = Math.max(0, Math.min(1, y - y0)), d = img.data, w = img.width * 4, out = [0, 0, 0];
+    for (var ch = 0; ch < 3; ch++) {
+      var i = (y0 * img.width + x0) * 4 + ch;
+      out[ch] = (d[i] * (1 - fx) + d[i + 4] * fx) * (1 - fy) + (d[i + w] * (1 - fx) + d[i + w + 4] * fx) * fy;
+    }
+    return out;
+  }
   // The printed grid as it really lies on the page: start from the corner straightening, then trace every
   // gridline from both ends one cell at a time, so a page that bows near the binding is followed.
   function fitChartGrid(img, corners, cols, rows) {
@@ -1766,10 +1776,16 @@ var PatternEngine = (function () {
       });
       return found;
     }
+    // Paper: white once the lighting is evened out, with no symbol.
+    function isPaper(c) { return c.ink <= INK_MARK && dE76(c.lab, [100, 0, 0]) < 9; }
+    // A black-and-white chart (nearly every marked cell pale and grey) is told apart by symbol shape, and has no
+    // Split Cells: in small cells a symbol's ink can make the quarters look split.
+    var marks = s.filter(function (c) { return !isPaper({ ink: inkOf(c.px, c.lab[0], c.paperL), lab: c.lab }); });
+    var symbols = marks.length > 0 && marks.filter(function (c) { return Math.hypot(c.lab[1], c.lab[2]) < 8 && c.lab[0] > 85; }).length >= 0.9 * marks.length;
     // Items to group: one per cell, or one per triangle of a Split Cell.
     var items = [];
     s.forEach(function (c, k) {
-      var sp = splitOf(c);
+      var sp = symbols ? null : splitOf(c);
       if (!sp) { items.push({ cell: k, lab: c.lab, rgb: c.rgb, ink: inkOf(c.px, c.lab[0], c.paperL) }); return; }
       c.split = sp.diagonal;
       sp.halves.forEach(function (h, side) {
@@ -1779,14 +1795,8 @@ var PatternEngine = (function () {
     });
     s.forEach(function (c) { c.px = null; c.quarters = null; });
     var cellsSample = s; s = items;
-    // Paper: white once the lighting is evened out, with no symbol.
-    function isPaper(c) { return c.ink <= INK_MARK && dE76(c.lab, [100, 0, 0]) < 9; }
     function dist(c, g) { return dE76(c.lab, g.lab) + 10 * Math.abs(c.ink - g.ink); }
     var groups = [], assign = new Array(s.length);
-    // A black-and-white chart (every marked cell pale and grey, no Split Cells) is told apart by symbol shape.
-    var marked = s.filter(function (c) { return !isPaper(c); });
-    var symbols = marked.length > 0 && s.length === cellsSample.length &&
-      marked.filter(function (c) { return Math.hypot(c.lab[1], c.lab[2]) < 8 && c.lab[0] > 85; }).length >= 0.9 * marked.length;
     if (symbols) groupBySymbol(img, grid, s, isPaper, groups, assign);
     else s.forEach(function (c, k) {
       if (isPaper(c)) { assign[k] = -1; return; }
@@ -1947,21 +1957,35 @@ var PatternEngine = (function () {
   // shift; cells join the closest group's average symbol, then a few passes settle them.
   var GLYPH = 12;
   function glyphOf(img, grid, x, y) {
-    var Y = new Float64Array(GLYPH * GLYPH), sorted, hi, g = new Float64Array(GLYPH * GLYPH);
-    for (var j = 0; j < GLYPH; j++) for (var i = 0; i < GLYPH; i++) {
-      var sum = 0;
-      for (var b = 0; b < 2; b++) for (var a = 0; a < 2; a++) {
-        var q = gridPoint(grid, x + 0.15 + 0.7 * (i + 0.25 + 0.5 * a) / GLYPH, y + 0.15 + 0.7 * (j + 0.25 + 0.5 * b) / GLYPH), c = pixelAt(img, q[0], q[1]);
-        sum += 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    var g = new Float64Array(GLYPH * GLYPH), ox = 0.15, oy = 0.15;
+    function ink() {
+      var Y = new Float64Array(GLYPH * GLYPH), sorted, hi;
+      for (var j = 0; j < GLYPH; j++) for (var i = 0; i < GLYPH; i++) {
+        var sum = 0;
+        for (var b = 0; b < 2; b++) for (var a = 0; a < 2; a++) {
+          var q = gridPoint(grid, x + ox + 0.7 * (i + 0.25 + 0.5 * a) / GLYPH, y + oy + 0.7 * (j + 0.25 + 0.5 * b) / GLYPH), c = pixelLerp(img, q[0], q[1]);
+          sum += 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        }
+        Y[j * GLYPH + i] = sum / 4;
       }
-      Y[j * GLYPH + i] = sum / 4;
+      sorted = Array.prototype.slice.call(Y).sort(function (p, q) { return p - q; });
+      hi = Math.max(60, sorted[Math.floor(sorted.length * 0.9)]); // the cell's own paper
+      for (var k = 0; k < Y.length; k++) g[k] = Math.max(0, Math.min(1, (0.78 * hi - Y[k]) / (0.33 * hi)));
     }
-    sorted = Array.prototype.slice.call(Y).sort(function (p, q) { return p - q; });
-    hi = Math.max(60, sorted[Math.floor(sorted.length * 0.9)]); // the cell's own paper
-    for (var k = 0; k < Y.length; k++) g[k] = Math.max(0, Math.min(1, (0.78 * hi - Y[k]) / (0.33 * hi)));
-    // Soften by a pixel, so thin strokes that land a little differently in each cell still overlap.
+    // Centre the symbol on its ink: in small cells the grid can sit a pixel or two off the print.
+    ink();
+    var m = 0, mx = 0, my = 0;
+    for (var k = 0; k < g.length; k++) { m += g[k]; mx += g[k] * (k % GLYPH + 0.5); my += g[k] * (Math.floor(k / GLYPH) + 0.5); }
+    if (m > 0) {
+      ox += Math.max(-0.1, Math.min(0.1, 0.7 * (mx / m / GLYPH - 0.5))); oy += Math.max(-0.1, Math.min(0.1, 0.7 * (my / m / GLYPH - 0.5)));
+      ink();
+    }
+    return soften(g);
+  }
+  // Soften by a pixel, so thin strokes that land a little differently in each cell still overlap.
+  function soften(g) {
     var out = new Float64Array(GLYPH * GLYPH);
-    for (j = 0; j < GLYPH; j++) for (i = 0; i < GLYPH; i++) {
+    for (var j = 0; j < GLYPH; j++) for (var i = 0; i < GLYPH; i++) {
       var acc = 0, wt = 0;
       for (var v = -1; v <= 1; v++) for (var u = -1; u <= 1; u++) {
         var ii = i + u, jj = j + v; if (ii < 0 || jj < 0 || ii >= GLYPH || jj >= GLYPH) continue;
@@ -1985,7 +2009,8 @@ var PatternEngine = (function () {
     return best;
   }
   function groupBySymbol(img, grid, items, isPaper, groups, assign) {
-    var JOIN = 0.38, glyphs = [];
+    // Small cells blur their symbols together, so they need closer symbols to join (a key, if read, joins them again).
+    var JOIN = grid.cellPx && grid.cellPx < 12 ? 0.32 : 0.38, glyphs = [];
     items.forEach(function (c, k) {
       if (isPaper(c)) { assign[k] = -1; return; }
       glyphs[k] = glyphOf(img, grid, c.cell % grid.cols, Math.floor(c.cell / grid.cols));
@@ -2177,6 +2202,118 @@ var PatternEngine = (function () {
       Object.keys(tally[g]).forEach(function (s) { if (tally[g][s] > bc) { bc = tally[g][s]; best = s; } });
       return bc >= 0.6 * n[g] && codeOf[best] ? codeOf[best] : null;
     });
+  }
+  // ---------- key icons ----------
+  // A picture's key draws each symbol (often in a box) on the row of its DMC number. Text recognition finds the
+  // numbers; the icon is the mark nearest to the left of the row's words. Icons and chart symbols are printed at
+  // different sizes, so both are compared as shapes scaled to fit a GLYPH × GLYPH square.
+  // Ink (0..1) over a W × H sampling of the page, at(i, j) → page point, against its own paper and darkest ink.
+  function inkMap(img, W, H, at) {
+    var Y = new Float64Array(W * H), sorted, hi, lo;
+    for (var j = 0; j < H; j++) for (var i = 0; i < W; i++) { var q = at(i + 0.5, j + 0.5), c = pixelLerp(img, q[0], q[1]); Y[j * W + i] = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; }
+    sorted = Array.prototype.slice.call(Y).sort(function (p, q) { return p - q; });
+    hi = 0.9 * sorted[Math.floor(sorted.length * 0.9)]; lo = sorted[0];
+    return { w: W, h: H, d: Y.map(function (v) { return Math.max(0, Math.min(1, (hi - v) / Math.max(40, hi - lo))); }) };
+  }
+  // Connected marks (ink over 0.4): [{ px, x0, y0, x1, y1 }].
+  function inkMarks(m) {
+    var W = m.w, H = m.h, seen = new Uint8Array(W * H), out = [];
+    for (var k = 0; k < W * H; k++) {
+      if (seen[k] || m.d[k] < 0.4) continue;
+      var st = [k], c = { px: [], x0: W, y0: H, x1: -1, y1: -1 }; seen[k] = 1;
+      while (st.length) {
+        var p = st.pop(), x = p % W, y = (p - x) / W;
+        c.px.push(p); c.x0 = Math.min(c.x0, x); c.x1 = Math.max(c.x1, x); c.y0 = Math.min(c.y0, y); c.y1 = Math.max(c.y1, y);
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (o) {
+          var X = x + o[0], Y = y + o[1], q = Y * W + X;
+          if (X >= 0 && Y >= 0 && X < W && Y < H && !seen[q] && m.d[q] >= 0.4) { seen[q] = 1; st.push(q); }
+        });
+      }
+      out.push(c);
+    }
+    return out;
+  }
+  // The kept marks' ink, scaled to fit the square (keeping its proportions) and centred.
+  function fittedShape(m, marks) {
+    var keep = new Uint8Array(m.w * m.h), x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1, g = new Float64Array(GLYPH * GLYPH);
+    marks.forEach(function (c) { c.px.forEach(function (p) { keep[p] = 1; }); x0 = Math.min(x0, c.x0); y0 = Math.min(y0, c.y0); x1 = Math.max(x1, c.x1); y1 = Math.max(y1, c.y1); });
+    if (x1 < 0) return g;
+    function ink(x, y) { // soft ink next to a kept pixel, so blurred edges stay
+      if (x < 0 || y < 0 || x >= m.w || y >= m.h) return 0;
+      for (var b = -1; b <= 1; b++) for (var a = -1; a <= 1; a++) { var X = x + a, Y = y + b; if (X >= 0 && Y >= 0 && X < m.w && Y < m.h && keep[Y * m.w + X]) return m.d[y * m.w + x]; }
+      return 0;
+    }
+    var side = Math.max(x1 - x0, y1 - y0) + 1, cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2;
+    for (var j = 0; j < GLYPH; j++) for (var i = 0; i < GLYPH; i++) {
+      var sx = cx + side * ((i + 0.5) / GLYPH - 0.5) - 0.5, sy = cy + side * ((j + 0.5) / GLYPH - 0.5) - 0.5, X0 = Math.floor(sx), Y0 = Math.floor(sy), fx = sx - X0, fy = sy - Y0;
+      g[j * GLYPH + i] = (ink(X0, Y0) * (1 - fx) + ink(X0 + 1, Y0) * fx) * (1 - fy) + (ink(X0, Y0 + 1) * (1 - fx) + ink(X0 + 1, Y0 + 1) * fx) * fy;
+    }
+    return soften(g);
+  }
+  // A chart cell's symbol as a fitted shape. Gridlines (marks running most of the way across) are left out.
+  function cellShape(img, grid, x, y) {
+    var M = 24, m = inkMap(img, M, M, function (i, j) { return gridPoint(grid, x - 0.05 + 1.1 * i / M, y - 0.05 + 1.1 * j / M); });
+    return fittedShape(m, inkMarks(m).filter(function (c) {
+      return c.x1 - c.x0 < 0.8 * M && c.y1 - c.y0 < 0.8 * M && c.x1 > 2 && c.y1 > 2 && c.x0 < M - 3 && c.y0 < M - 3;
+    }));
+  }
+  // Key rows from text recognition's words ([{ text, bbox: { x0, y0, x1, y1 } }], page pixels): each DMC number
+  // standing alone as a word, with the shape of the icon to the left of its row's words. Rows of several numbers
+  // side by side (gridline rulers) are not key rows; a number listed twice keeps its first (topmost) row.
+  function keyIcons(img, words) {
+    var ws = words.filter(function (w) { return w.text && w.bbox; }).map(function (w) {
+      var b = w.bbox, t = String(w.text).replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, ''), code = keyCodesFromText(t)[0] || (/^white$/i.test(t) ? 'Blanc' : null);
+      return { t: t, code: code && code.toUpperCase() === t.toUpperCase() || code === 'Blanc' ? code : null, x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, cy: (b.y0 + b.y1) / 2, h: b.y1 - b.y0 };
+    }).sort(function (a, b) { return a.y0 - b.y0 || a.x0 - b.x0; });
+    var out = [];
+    ws.forEach(function (w) {
+      if (!w.code || w.h < 4 || out.some(function (r) { return r.code === w.code; })) return;
+      var h = w.h, inBand = ws.filter(function (o) { return Math.abs(o.cy - w.cy) < 0.6 * h; });
+      if (inBand.filter(function (o) { return /^\d{2,}$/.test(o.t); }).length >= 3) return;
+      // Walk left over the row's words (a thread name: letters, wider than tall).
+      var left = w.x0;
+      inBand.filter(function (o) { return o.x1 <= w.x0 && /[A-Za-z]{2}/.test(o.t) && o.x1 - o.x0 > 1.2 * (o.y1 - o.y0) && o.h < 1.6 * h; })
+        .sort(function (a, b) { return b.x1 - a.x1; })
+        .forEach(function (o) { if (o.x1 > left - 8 * h) left = Math.min(left, o.x0); });
+      var bandH = Math.round(2.6 * h), x1 = left - 0.2 * h, x0 = Math.max(0, x1 - 10 * h), W = Math.round(x1 - x0), top = w.cy - bandH / 2;
+      if (W < h) return;
+      var m = inkMap(img, W, bandH, function (i, j) { return [x0 + i, top + j]; });
+      // Frames, table lines and the next rows' marks run into the band's edges or most of its height; specks and
+      // thin pieces of line are not icons either.
+      var marks = inkMarks(m).filter(function (c) {
+        var cw = c.x1 - c.x0 + 1, ch = c.y1 - c.y0 + 1;
+        return c.y0 > 0 && c.y1 < bandH - 1 && c.x0 > 0 && c.x1 < W - 1 && ch < 0.8 * bandH && cw < 0.8 * bandH &&
+          Math.max(cw, ch) >= 0.3 * h && !(Math.max(cw, ch) > 5 * Math.min(cw, ch) && Math.max(cw, ch) > 0.4 * bandH);
+      });
+      if (!marks.length) return;
+      // The icon: the rightmost mark, with the marks right beside it.
+      marks.sort(function (a, b) { return b.x1 - a.x1; });
+      var icon = [marks[0]], ix0 = marks[0].x0;
+      marks.slice(1).forEach(function (c) { if (c.x1 >= ix0 - 0.3 * h) { icon.push(c); ix0 = Math.min(ix0, c.x0); } });
+      out.push({ code: w.code, shape: fittedShape(m, icon), box: [x0 + ix0, top + Math.min.apply(null, icon.map(function (c) { return c.y0; })), x0 + marks[0].x1 + 1, top + Math.max.apply(null, icon.map(function (c) { return c.y1; })) + 1] });
+    });
+    return out;
+  }
+  // DMC guesses from key icons: each group's symbol (fitted shapes averaged over up to 30 of its cells) takes the
+  // closest icon, each icon used once while they last, then the closest. Paper groups get null.
+  function keyIconGuesses(img, read, icons) {
+    var out = read.groups.map(function () { return null; });
+    if (!icons.length) return out;
+    var members = read.groups.map(function () { return []; }), pairs = [], used = {};
+    read.cells.forEach(function (g, c) { if (members[g]) members[g].push(c); });
+    read.groups.forEach(function (gr, g) {
+      if (gr.paper || !members[g].length) return;
+      var list = members[g], n = Math.min(30, list.length), avg = new Float64Array(GLYPH * GLYPH);
+      for (var k = 0; k < n; k++) {
+        var c = list[Math.floor(k * list.length / n)], sh = cellShape(img, read.grid, c % read.cols, Math.floor(c / read.cols));
+        for (var t = 0; t < avg.length; t++) avg[t] += sh[t] / n;
+      }
+      icons.forEach(function (ic, i) { pairs.push({ g: g, i: i, d: glyphDist(avg, ic.shape) }); });
+    });
+    pairs.sort(function (a, b) { return a.d - b.d; });
+    pairs.forEach(function (p) { if (out[p.g] == null && !used[p.i]) { out[p.g] = icons[p.i].code; used[p.i] = 1; } });
+    pairs.forEach(function (p) { if (out[p.g] == null) out[p.g] = icons[p.i].code; });
+    return out;
   }
   // The custom Blank that holds a cols × rows chart cell for cell at a Fabric Count.
   function chartBlank(cols, rows, count, finish) {
@@ -2774,7 +2911,7 @@ var PatternEngine = (function () {
     serialize: serialize, deserialize: deserialize,
     createBlankPattern: createBlankPattern, reshape: reshape, shrinkToFit: shrinkToFit, fitsBlank: fitsBlank, rebase: rebase,
     readChart: readChart, estimateGridCounts: estimateGridCounts, fitChartGrid: fitChartGrid, gridPoint: gridPoint, cornerGrid: cornerGrid, guessChartCorners: guessChartCorners,
-    createImportedPattern: createImportedPattern, chartBlank: chartBlank, keyCodesFromText: keyCodesFromText, keyGuesses: keyGuesses, keyPairsFromText: keyPairsFromText, cellSymbols: cellSymbols, symbolKeyGuesses: symbolKeyGuesses, chartPartOffset: chartPartOffset, joinChartPart: joinChartPart,
+    createImportedPattern: createImportedPattern, chartBlank: chartBlank, keyCodesFromText: keyCodesFromText, keyGuesses: keyGuesses, keyPairsFromText: keyPairsFromText, cellSymbols: cellSymbols, symbolKeyGuesses: symbolKeyGuesses, keyIcons: keyIcons, keyIconGuesses: keyIconGuesses, chartPartOffset: chartPartOffset, joinChartPart: joinChartPart,
     blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, fillCells: fillCells, palette: palette,
     splitAt: splitAt, splitList: splitList, threadUsage: threadUsage, withDone: withDone, clearDone: clearDone, isDone: isDone, progress: progress, oxsExport: oxsExport, oxsImport: oxsImport, halfList: halfList, quarterList: quarterList, knots: knots, knotLegend: knotLegend, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, withFit: withFit, splitTriangles: splitTriangles, splitSide: splitSide
   };
@@ -4330,12 +4467,26 @@ var ChartPdf = (function () {
   var TESS_CORE = 'https://cdn.jsdelivr.net/npm/tesseract.js-core@6.0.0/';
   var TESS_LANG = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int';
   var ocrWorker = null;
-  function ocrText(canvas) {
+  function ocrReader() {
     return loadScriptOnce(TESS + 'tesseract.min.js', 'Tesseract', 'The text reader').then(function (T) {
       if (!ocrWorker) ocrWorker = T.createWorker('eng', 1, { workerPath: TESS + 'worker.min.js', corePath: TESS_CORE, langPath: TESS_LANG })
         .catch(function (err) { ocrWorker = null; throw err; });
       return ocrWorker;
-    }).then(function (w) { return w.recognize(canvas); }).then(function (r) { return r.data.text || ''; });
+    });
+  }
+  function ocrText(canvas) {
+    return ocrReader().then(function (w) { return w.setParameters({ tessedit_pageseg_mode: '6' }).then(function () { return w.recognize(canvas); }); })
+      .then(function (r) { return r.data.text || ''; });
+  }
+  // Every word with its box: sparse-text mode finds a key table's numbers as words of their own.
+  function ocrWords(canvas) {
+    return ocrReader().then(function (w) {
+      return w.setParameters({ tessedit_pageseg_mode: '11' }).then(function () { return w.recognize(canvas, {}, { blocks: true }); });
+    }).then(function (r) {
+      var out = [];
+      (r.data.blocks || []).forEach(function (b) { b.paragraphs.forEach(function (p) { p.lines.forEach(function (l) { l.words.forEach(function (w) { out.push({ text: w.text, bbox: w.bbox }); }); }); }); });
+      return out;
+    });
   }
   // The chart page with its grid painted out, so symbols in the grid aren't read as numbers.
   function pageWithoutGrid() {
@@ -4349,15 +4500,33 @@ var ChartPdf = (function () {
   function readKeyFrom(canvas) {
     var reading = imp;
     impBusy('Reading the key… The first time downloads the text reader (about 7 MB).');
-    ocrText(canvas).then(function (text) {
-      impBusy('');
-      if (imp !== reading) return;
-      var codes = E.keyCodesFromText(text, { skipNumberLines: true });
-      if (!codes.length) { toast('No DMC numbers found there. Type them into Numbers from the key instead.'); return; }
-      var have = E.keyCodesFromText($('#impKey').value), all = have.concat(codes.filter(function (c) { return have.indexOf(c) < 0; }));
-      $('#impKey').value = imp.key = all.join(', '); applyKey(); showThreads();
-      toast('Read ' + plural(codes.length, 'DMC number') + ' from the key. Check them against it.');
+    // A black-and-white chart's key pairs each symbol with its number: match them by shape first.
+    (imp.read.symbols ? ocrWords(canvas).then(function (words) {
+      var icons = E.keyIcons(canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height), words);
+      return icons.length >= 2 ? icons : null;
+    }) : Promise.resolve(null)).then(function (icons) {
+      if (imp !== reading) return null;
+      if (icons) { impBusy(''); applyIconKey(icons); return null; }
+      return ocrText(canvas).then(function (text) {
+        impBusy('');
+        if (imp !== reading) return;
+        var codes = E.keyCodesFromText(text, { skipNumberLines: true });
+        if (!codes.length) { toast('No DMC numbers found there. Type them into Numbers from the key instead.'); return; }
+        var have = E.keyCodesFromText($('#impKey').value), all = have.concat(codes.filter(function (c) { return have.indexOf(c) < 0; }));
+        $('#impKey').value = imp.key = all.join(', '); applyKey(); showThreads();
+        toast('Read ' + plural(codes.length, 'DMC number') + ' from the key. Check them against it.');
+      });
     }).catch(function (err) { impBusy(''); toast('Could not read the key: ' + (err && err.message || 'unknown error') + '.'); });
+  }
+  // Each symbol takes the number beside the key icon it looks most like; colors set by hand stay.
+  function applyIconKey(icons) {
+    var g = E.keyIconGuesses(imp.data, imp.read, icons), n = 0;
+    imp.read.groups.forEach(function (gr, k) { if (g[k] && !imp.manual['cell' + k]) { imp.flosses[k] = g[k]; imp.bySymbol['cell' + k] = true; n++; } });
+    var codes = icons.map(function (ic) { return ic.code; }), have = E.keyCodesFromText($('#impKey').value);
+    $('#impKey').value = imp.key = have.concat(codes.filter(function (c) { return have.indexOf(c) < 0; })).join(', ');
+    showThreads();
+    $('#impKeyNote').textContent = 'Matched ' + plural(n, 'symbol') + ' to the ' + plural(icons.length, 'icon') + ' in the key. Check them against it.';
+    toast('Matched the chart\'s symbols to ' + plural(icons.length, 'DMC number') + ' in the key. Check them against it.');
   }
   $('#keyFile').addEventListener('change', function () {
     var file = this.files[0]; this.value = '';
@@ -4440,7 +4609,7 @@ var ChartPdf = (function () {
     var list = $('#impThreads'); list.innerHTML = '';
     if (imp.read.symbols) {
       var sy = document.createElement('p'); sy.className = 'muted';
-      sy.textContent = 'This chart has no colors, so each row is one symbol (see the close-up). Find it in the key and type its DMC number.';
+      sy.textContent = 'This chart has no colors, so each row is one symbol (see the close-up). Read the key to match symbols to its DMC numbers, or find each in the key and type its number.';
       list.appendChild(sy);
     }
     function addRow(kind, gr, k, code) {
