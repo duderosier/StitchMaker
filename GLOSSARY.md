@@ -64,6 +64,14 @@ _Avoid_: Design, image, chart (the Chart is the printout of a Pattern)
 One full cross stitch occupying one cell of the Pattern.
 _Avoid_: Pixel, cell (when meaning a stitched cell)
 
+**Split Cell**:
+A cell divided along one diagonal into two triangles, each a Floss or Unstitched, stitched as a three-quarter and a quarter stitch.
+_Avoid_: Half stitch, half cell, fractional stitch
+
+**Backstitch**:
+A straight line of thread from one grid corner to another (along a cell edge or across a diagonal), with its own Floss, which does not count toward the Color Count.
+_Avoid_: Outline, line, stroke
+
 **Edge Stitch**:
 One stitch wrapping the cut edge of an Overcast Blank (its Cut Line or an inside Ring Hole); each has its own Floss, which does not count toward the Color Count.
 _Avoid_: Whipstitch, border stitch, binding
@@ -83,6 +91,10 @@ _Avoid_: Colors, swatches
 **Color Count**:
 The number of Flosses the automatic reduction aims for when building the Palette of design Stitches.
 _Avoid_: Colors, levels, depth
+
+**Source Chart**:
+A chart image, page photo or PDF page made by someone else that the person imports to become a Pattern.
+_Avoid_: Pattern (when meaning the file), import, upload
 
 ### Editing the Palette
 

@@ -15,16 +15,22 @@ test('a blank Pattern starts fully Unstitched with a starter Palette ready to dr
   assert.equal(E.palette(drawn)[0].count, 2);
 });
 
-test('changing the Blank keeps drawn Stitches where they still fit inside the new shape', () => {
+test('changing the Blank keeps the drawing centred, dropping only Stitches outside the new shape', () => {
   const small = { shape: 'custom', wIn: 1, hIn: 1, count: 10, finish: 'framed' };
   let p = E.createBlankPattern({ blank: small, palette: ['310'] });
   p = E.apply(p, { type: 'paint', floss: '310', cells: [[5, 5], [0, 0]] });
   const bigger = E.reshape(p, { shape: 'custom', wIn: 2, hIn: 2, count: 10, finish: 'framed' });
   assert.equal(bigger.cols, 20);
+  assert.equal(E.cellAt(bigger, 10, 10).code, '310', 'moved by half the growth (5 cells)');
   assert.equal(E.cellAt(bigger, 5, 5).code, '310');
   const round = E.reshape(p, { shape: 'preset', presetId: 'round-1.5', count: 10, finish: 'framed' });
-  assert.equal(E.cellAt(round, 0, 0), null, 'the corner is outside the round');
-  assert.equal(E.cellAt(round, 5, 5).code, '310');
+  assert.equal(round.cols, 15);
+  assert.equal(E.cellAt(round, 7, 7).code, '310', 'moved by 2 cells');
+  assert.equal(E.cellAt(round, 2, 2).code, '310', 'the old corner still fits inside the round');
+  const tiny = E.reshape(bigger, { shape: 'preset', presetId: 'round-1.5', count: 7, finish: 'framed' });
+  assert.equal(E.cellAt(tiny, 0, 0), null, 'cells outside the round stay Unstitched');
+  const smaller = E.reshape(bigger, small);
+  assert.equal(E.cellAt(smaller, 5, 5).code, '310', 'shrinking back centres again');
 });
 
 test('a drawn Cut-Out is cut around what was drawn', () => {

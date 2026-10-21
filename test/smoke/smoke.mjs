@@ -9,6 +9,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const photo = join(root, 'test/smoke/fixtures/cat.jpg');
+const chartPng = join(root, 'test/smoke/fixtures/chart.png'), chartPdf = join(root, 'test/smoke/fixtures/chart.pdf');
+// pdf.js normally comes from cdnjs (ADR 0002); the test serves the same version from node_modules instead.
+const pdfjsDir = process.env.PDFJS_DIR || join(root, 'node_modules/pdfjs-dist/build');
 
 async function loadPlaywright() {
   for (const spec of [process.env.PLAYWRIGHT_MODULE, 'playwright', '/opt/npm-tools/node_modules/playwright/index.js'].filter(Boolean)) {
@@ -44,6 +47,10 @@ async function openPage(contextOptions) {
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('dialog', d => d.accept());
+  await page.route('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/**', async route => {
+    const name = new URL(route.request().url()).pathname.split('/').pop();
+    try { await route.fulfill({ body: await readFile(join(pdfjsDir, name)), contentType: 'text/javascript' }); } catch { await route.abort(); }
+  });
   await page.goto(url);
   return { page, errors };
 }
@@ -115,7 +122,9 @@ try {
   await page.click('#btnPatterns'); await page.waitForTimeout(200);
   await page.click('[data-act=new-pattern]'); await page.waitForTimeout(200);
   await page.click('#empty [data-act=start-blank]'); await page.waitForTimeout(200);
-  check(await page.getAttribute('[data-tab=edit]', 'aria-selected') === 'true', 'Draw my own opens the Edit step');
+  check(await page.getAttribute('[data-tab=blank]', 'aria-selected') === 'true', 'Draw my own opens the Blank step');
+  check(await page.isHidden('[data-tab=photo]') && await page.isHidden('[data-tab=background]'), 'a drawing hides the Photo and Background steps');
+  await tab(page, 'edit');
   const b2 = await page.locator('#stage').boundingBox();
   await page.mouse.move(b2.x + b2.width / 2 - 30, b2.y + b2.height / 2); await page.mouse.down();
   await page.mouse.move(b2.x + b2.width / 2 + 30, b2.y + b2.height / 2, { steps: 8 }); await page.mouse.up();
@@ -128,6 +137,43 @@ try {
   await page.waitForTimeout(900);
   await page.reload(); await page.waitForTimeout(700);
   check((await page.inputValue('#name')) === 'My drawing' && await page.isHidden('#empty'), 'hand-drawn pattern restored after reload');
+  await tab(page, 'blank'); await page.click('[data-shape=custom]'); await page.click('[data-finish=overcast]'); await page.waitForTimeout(150);
+  check(await page.isVisible('[data-tab=edge]'), 'a drawing can be Overcast and gets the Edge step');
+
+  // ---------- phone: importing a Source Chart ----------
+  await page.setInputFiles('#chartFile', chartPng);
+  await page.waitForSelector('.imp-step[data-step=grid].on');
+  await page.waitForTimeout(300);
+  check(await page.inputValue('#impCols') === '24' && await page.inputValue('#impRows') === '20', 'chart import finds the 24 × 20 grid');
+  await page.click('[data-act=imp-read]');
+  await page.waitForSelector('.imp-step[data-step=threads].on', { timeout: 20000 });
+  const threads = await page.$$('#impThreads .thread');
+  check(threads.length === 4, `chart import finds 3 thread colors plus bare fabric (${threads.length})`);
+  await page.click('[data-act=imp-make]'); await page.waitForTimeout(300);
+  check((await page.textContent('#readout')).startsWith('24 × 20 stitches, 3 colors'), 'imported chart becomes a 24 × 20 Pattern');
+  await page.click('.stage-tools .js-compare');
+  check(await page.getAttribute('.stage-tools .js-compare', 'aria-pressed') === 'true', 'original chart toggle on an import');
+  await page.click('.stage-tools .js-compare');
+  await tab(page, 'blank'); await page.selectOption('#count', '18'); await page.waitForTimeout(150);
+  check((await page.textContent('#readout')).startsWith('24 × 20'), 'a new Fabric Count keeps every imported stitch');
+  await page.waitForTimeout(900);
+  await page.reload(); await page.waitForTimeout(900);
+  check((await page.inputValue('#name')) === 'chart' && (await page.textContent('#readout')).startsWith('24 × 20'), 'imported chart restored after reload');
+  await tab(page, 'colors'); await page.click('[data-act=reread-chart]');
+  await page.waitForSelector('.imp-step[data-step=grid].on');
+  check(await page.inputValue('#impCols') === '24', 'Re-read chart reopens the saved grid');
+  await page.click('#importer [data-act=close-dialog]');
+  await page.setInputFiles('#chartFile', chartPdf);
+  await page.waitForSelector('#impPages button[data-page="2"]', { timeout: 20000 }).catch(() => {});
+  const hasPages = await page.locator('#impPages button').count();
+  check(hasPages === 2, `a two-page PDF offers its pages (${hasPages})`);
+  if (hasPages === 2) {
+    await page.click('#impPages button[data-page="2"]');
+    await page.waitForSelector('.imp-step[data-step=grid].on', { timeout: 20000 });
+    await page.waitForTimeout(300);
+    check(await page.inputValue('#impCols') === '24', `PDF page 2 shows the chart grid (${await page.inputValue('#impCols')} across)`);
+  }
+  await page.click('#importer [data-act=close-dialog]');
   check(errors.length === 0, `no page errors on the phone${errors.length ? ': ' + errors.join(' | ') : ''}`);
 
   // ---------- unfolded Fold: Pattern left, controls right ----------

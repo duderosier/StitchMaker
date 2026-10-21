@@ -247,6 +247,38 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
   .panel { border-left: 0; padding-top: 4px; }
   .tabs { padding-bottom: 12px; }
 }
+/* Chart import */
+dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; margin: 0 auto; }
+@media (min-width: 760px) { dialog.importer { height: min(92dvh, 980px); border-radius: var(--radius-m); margin: auto; } }
+.importer .dlg { height: 100%; max-height: none; grid-template-rows: auto minmax(0, 1fr); position: relative; padding-bottom: env(safe-area-inset-bottom); }
+.imp-step { display: none; min-height: 0; }
+.imp-step.on { display: grid; }
+.imp-step[data-step=grid].on { grid-template-rows: minmax(0, 1fr) auto; }
+.imp-step[data-step=pages].on, .imp-step[data-step=threads].on { grid-template-rows: auto minmax(0, 1fr) auto; }
+.imp-stage { position: relative; min-height: 0; margin: 0 12px; border-radius: var(--radius-m); overflow: hidden; background: var(--card); box-shadow: var(--shadow); }
+#impCanvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+.loupe { position: absolute; left: 10px; top: 10px; width: 132px; height: 132px; border-radius: 999px; box-shadow: 0 0 0 3px var(--card), var(--shadow); pointer-events: none; }
+.loupe[hidden] { display: none; }
+.imp-controls { display: grid; gap: 8px; padding: 10px 14px 12px; }
+.imp-controls .row { flex-wrap: nowrap; }
+.imp-controls input[type=number] { width: 72px; text-align: center; }
+.step-btn { min-width: 44px; padding: 0; font-size: 20px; }
+.pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+.pages button { border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--card); padding: 6px; font-size: 12.5px; color: var(--ink-soft); }
+.pages img { display: block; width: 100%; height: auto; margin-bottom: 4px; }
+.threads { display: grid; gap: 8px; }
+.thread { display: grid; grid-template-columns: 44px 44px minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--card); }
+.thread canvas, .thread .printed { width: 44px; height: 44px; border-radius: 8px; box-shadow: inset 0 0 0 1px rgba(52, 25, 58, .16); image-rendering: pixelated; }
+.thread .fields { display: grid; gap: 4px; min-width: 0; }
+.thread .fields .row { flex-wrap: nowrap; gap: 6px; }
+.thread input[type=text] { width: 92px; height: 38px; }
+.thread .nm { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thread .nm.bad { color: #B3261E; }
+.thread .secondary { min-height: 38px; padding: 0 12px; font-size: 13.5px; }
+.thread.bare { opacity: .7; }
+.imp-foot { padding: 10px 14px 12px; }
+.imp-busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(239, 230, 242, .82); font: 600 17px/1.2 var(--round); }
+.imp-busy[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -275,10 +307,11 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
     </div>
     <div class="hint" id="hint"></div>
     <div class="empty" id="empty">
-      <h2>Start with a photo, or draw your own</h2>
-      <p>Pick a picture and it becomes a stitchable keychain pattern in real DMC colors. Or pick a Blank and stitch it by hand.</p>
+      <h2>Start with a photo, a chart, or draw your own</h2>
+      <p>Pick a picture and it becomes a stitchable keychain pattern in real DMC colors. Import a chart you own to edit it. Or pick a Blank and stitch it by hand.</p>
       <div class="actions" style="justify-content:center">
         <button class="primary" data-act="choose-photo">Choose photo</button>
+        <button class="secondary" data-act="import-chart">Import a chart</button>
         <button class="secondary" data-act="start-blank">Draw my own</button>
       </div>
     </div>
@@ -289,13 +322,13 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
       <div class="shapes" id="shapes"></div>
       <div class="row" id="customRow" hidden>
         <label for="customW">Size (inches)</label>
-        <input type="number" id="customW" min="0.5" max="6" step="0.1" value="2" aria-label="Width in inches">
+        <input type="number" id="customW" min="0.5" max="12" step="0.1" value="2" aria-label="Width in inches">
         <span>×</span>
-        <input type="number" id="customH" min="0.5" max="6" step="0.1" value="2" aria-label="Height in inches">
+        <input type="number" id="customH" min="0.5" max="12" step="0.1" value="2" aria-label="Height in inches">
       </div>
       <div class="row" id="cutoutRow" hidden>
         <label for="longIn">Longest side</label>
-        <input type="number" id="longIn" min="0.5" max="6" step="0.1" value="2"> <span>inches</span>
+        <input type="number" id="longIn" min="0.5" max="12" step="0.1" value="2"> <span>inches</span>
       </div>
       <div class="row"><span class="field-label">Finish</span>
         <div class="seg" id="finish">
@@ -311,6 +344,7 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
     <div class="pane" data-pane="photo">
       <div class="actions">
         <button class="primary" data-act="choose-photo">Choose photo</button>
+        <button class="secondary" data-act="import-chart">Import a chart</button>
         <button class="secondary" data-act="start-blank">Draw my own</button>
         <button class="secondary" data-act="fit">Fit to Blank</button>
         <button class="secondary" data-act="rot-left" aria-label="Turn left 90°">⟲ 90°</button>
@@ -341,8 +375,8 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
     </div>
 
     <div class="pane" data-pane="colors">
-      <div class="row"><label for="colorCount">Colors <b id="ccVal">6</b></label><input type="range" id="colorCount" min="2" max="20" value="6"></div>
-      <div class="row"><span class="field-label">Clean up specks</span>
+      <div class="row js-photo-only"><label for="colorCount">Colors <b id="ccVal">6</b></label><input type="range" id="colorCount" min="2" max="20" value="6"></div>
+      <div class="row js-photo-only"><span class="field-label">Clean up specks</span>
         <div class="seg" id="confetti">
           <button data-confetti="0">Off</button><button data-confetti="1" aria-pressed="true">Light</button>
           <button data-confetti="2">Medium</button><button data-confetti="3">Strong</button>
@@ -350,8 +384,10 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
       </div>
       <div class="actions">
         <button class="secondary js-compare" aria-pressed="false">Show original photo</button>
+        <button class="secondary js-chart-only" data-act="reread-chart" hidden>Re-read chart</button>
       </div>
-      <p class="muted js-nophoto" hidden>Hand-drawn pattern: Colors and speck cleanup work on photos. Add thread colors with + on the Edit step.</p>
+      <p class="muted js-drawing-only" hidden>Hand-drawn pattern: add thread colors with + on the Edit step. Tap a color here to merge, swap or drop it.</p>
+      <p class="muted js-chart-only" hidden>Imported chart: tap a color to merge, swap or drop it. Re-read chart to fix the grid or the thread numbers.</p>
       <div class="floss-list" id="flossList"></div>
       <div class="actions" id="flossActions" hidden>
         <button class="secondary" data-act="merge">Merge into…</button>
@@ -426,6 +462,7 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
 </div>
 
 <input type="file" id="file" accept="image/*" hidden>
+<input type="file" id="chartFile" accept="image/*,application/pdf,.pdf" hidden>
 <div class="toast" id="toast" hidden role="status"></div>
 
 <dialog id="picker">
@@ -433,6 +470,47 @@ dialog::backdrop { background: rgba(52, 25, 58, .35); backdrop-filter: blur(3px)
     <div class="dlg-head"><h2 id="pickerTitle">Pick a Floss</h2><button class="iconbtn" data-act="close-dialog">Close</button></div>
     <div style="padding:0 14px"><input type="search" id="pickerSearch" placeholder="Search by DMC number or name" style="width:100%"></div>
     <div class="dlg-body"><div class="dmc-grid" id="pickerGrid"></div></div>
+  </div>
+</dialog>
+
+<dialog id="importer" class="importer">
+  <div class="dlg">
+    <div class="dlg-head"><h2 id="impTitle">Import a chart</h2><button class="iconbtn" data-act="close-dialog">Close</button></div>
+    <div class="imp-step" data-step="pages">
+      <p class="muted" style="padding:0 14px">Pick the page with the chart grid.</p>
+      <div class="dlg-body"><div class="pages" id="impPages"></div></div>
+    </div>
+    <div class="imp-step" data-step="grid">
+      <div class="imp-stage"><canvas id="impCanvas" aria-label="Chart page"></canvas><canvas id="impLoupe" class="loupe" width="132" height="132" hidden></canvas></div>
+      <div class="imp-controls">
+        <p class="muted">Drag the four dots onto the corners of the chart's grid. The lines should sit on the printed gridlines.</p>
+        <div class="row">
+          <span class="field-label">Stitches across</span>
+          <button class="secondary step-btn" data-count="cols" data-d="-1" aria-label="Fewer across">−</button>
+          <input type="number" id="impCols" min="2" max="400" aria-label="Stitches across">
+          <button class="secondary step-btn" data-count="cols" data-d="1" aria-label="More across">+</button>
+        </div>
+        <div class="row">
+          <span class="field-label">Stitches down</span>
+          <button class="secondary step-btn" data-count="rows" data-d="-1" aria-label="Fewer down">−</button>
+          <input type="number" id="impRows" min="2" max="400" aria-label="Stitches down">
+          <button class="secondary step-btn" data-count="rows" data-d="1" aria-label="More down">+</button>
+        </div>
+        <div class="actions">
+          <button class="secondary" data-act="imp-auto">Guess counts again</button>
+          <button class="primary" data-act="imp-read">Read chart</button>
+        </div>
+      </div>
+    </div>
+    <div class="imp-step" data-step="threads">
+      <p class="muted" style="padding:0 14px">Type each color's DMC number from the chart's key. Give two colors the same number to join them.</p>
+      <div class="dlg-body"><div class="threads" id="impThreads"></div></div>
+      <div class="imp-foot actions">
+        <button class="secondary" data-act="imp-back">Back to grid</button>
+        <button class="primary" data-act="imp-make">Make pattern</button>
+      </div>
+    </div>
+    <div class="imp-busy" id="impBusy" hidden><span id="impBusyText">Reading the chart…</span></div>
   </div>
 </dialog>
 
@@ -1016,6 +1094,393 @@ var PatternEngine = (function () {
     return withState(base, fromSaved(o.now), o.past.map(fromSaved), o.future.map(fromSaved));
   }
 
+  // ---------- Source Chart ----------
+  // Reading someone else's chart from an image: corners (TL, TR, BR, BL, in image pixels) give a perspective
+  // map from the stitch grid to the page, so angled phone photos read like flat PDFs.
+  function quadMap(corners) {
+    var x0 = corners[0][0], y0 = corners[0][1], x1 = corners[1][0], y1 = corners[1][1];
+    var x2 = corners[2][0], y2 = corners[2][1], x3 = corners[3][0], y3 = corners[3][1];
+    var sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3, a, b, c, d, e, f, g, h;
+    if (Math.abs(sx) < 1e-9 && Math.abs(sy) < 1e-9) {
+      a = x1 - x0; b = x2 - x1; c = x0; d = y1 - y0; e = y2 - y1; f = y0; g = 0; h = 0;
+    } else {
+      var dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2, den = dx1 * dy2 - dx2 * dy1;
+      g = (sx * dy2 - dx2 * sy) / den; h = (dx1 * sy - sx * dy1) / den;
+      a = x1 - x0 + g * x1; b = x3 - x0 + h * x3; c = x0;
+      d = y1 - y0 + g * y1; e = y3 - y0 + h * y3; f = y0;
+    }
+    // (u, v) in [0, 1]² → image point
+    return function (u, v) { var w = g * u + h * v + 1; return [(a * u + b * v + c) / w, (d * u + e * v + f) / w]; };
+  }
+  function pixelAt(img, x, y) {
+    var px = Math.max(0, Math.min(img.width - 1, Math.round(x))), py = Math.max(0, Math.min(img.height - 1, Math.round(y)));
+    var i = (py * img.width + px) * 4, d = img.data;
+    return [d[i], d[i + 1], d[i + 2]];
+  }
+  // The printed grid as it really lies on the page: start from the corner straightening, then trace every
+  // gridline from both ends one cell at a time, so a page that bows near the binding is followed.
+  function fitChartGrid(img, corners, cols, rows) {
+    var map = quadMap(corners), NX = cols + 1, NY = rows + 1, base = new Float64Array(NX * NY * 2);
+    for (var j = 0; j < NY; j++) for (var i = 0; i < NX; i++) { var b = map(i / cols, j / rows); base[(j * NX + i) * 2] = b[0]; base[(j * NX + i) * 2 + 1] = b[1]; }
+    function bx(i, j) { return base[(j * NX + i) * 2]; }
+    function by(i, j) { return base[(j * NX + i) * 2 + 1]; }
+    function step(i, j) { // local cell vectors across (e) and down (f)
+      var i0 = Math.max(0, i - 1), i1 = Math.min(cols, i + 1), j0 = Math.max(0, j - 1), j1 = Math.min(rows, j + 1);
+      return [(bx(i1, j) - bx(i0, j)) / (i1 - i0), (by(i1, j) - by(i0, j)) / (i1 - i0), (bx(i, j1) - bx(i, j0)) / (j1 - j0), (by(i, j1) - by(i, j0)) / (j1 - j0)];
+    }
+    function dark(x, y) { var c = pixelAt(img, x, y); return 255 - (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]); }
+    // Where a gridline crosses near (x, y): shift t (cells, along a) of a one-cell segment running along r.
+    // A gridline is dark along its whole length and a symbol only in places, so score by a low percentile.
+    function findLine(x, y, ax, ay, rx, ry, tc, range) {
+      var best = tc, bv = -Infinity, vals = [], px = 1 / Math.max(1, Math.hypot(ax, ay)); // one pixel, in cells
+      for (var t = tc - range; t <= tc + range + 1e-9; t += 0.04) {
+        var along = [];
+        for (var s2 = -0.5; s2 <= 0.501; s2 += 0.0625) {
+          var m = 0; // darkest within a pixel either side, so slightly tilted thin lines still count
+          for (var o = -px; o <= px + 1e-9; o += px) m = Math.max(m, dark(x + (t + o) * ax + s2 * rx, y + (t + o) * ay + s2 * ry));
+          along.push(m);
+        }
+        along.sort(function (p, q) { return p - q; });
+        var v = along[Math.floor(along.length * 0.2)];
+        vals.push(v); if (v > bv) { bv = v; best = t; }
+      }
+      vals.sort(function (p, q) { return p - q; });
+      return bv - vals[vals.length >> 1] > 6 ? best : null;
+    }
+    // Trace one gridline through n + 1 crossings; at(k) gives [x, y, ax, ay, rx, ry] for crossing k.
+    function trace(n, at, fixEnds) {
+      function pass(order) {
+        var t = new Float64Array(n + 1), prev = null, prev2 = null;
+        order.forEach(function (k) {
+          var g = at(k), pred = prev == null ? 0 : prev + (prev2 == null ? 0 : Math.max(-0.12, Math.min(0.12, prev - prev2)));
+          var found = findLine(g[0], g[1], g[2], g[3], g[4], g[5], pred, prev == null ? 0.4 : 0.3);
+          t[k] = found == null ? pred : found;
+          prev2 = prev; prev = t[k];
+        });
+        return t;
+      }
+      var ks = []; for (var k = 0; k <= n; k++) ks.push(k);
+      var down = pass(ks), up = pass(ks.slice().reverse()), out = new Float64Array(n + 1);
+      for (k = 0; k <= n; k++) {
+        var w = k / n;
+        out[k] = Math.abs(down[k] - up[k]) < 0.25 ? (1 - w) * down[k] + w * up[k] : (w < 0.5 ? down[k] : up[k]);
+      }
+      if (fixEnds) { out[0] = 0; out[n] = 0; }
+      return out;
+    }
+    var tv = [], th = [];
+    for (i = 0; i <= cols; i++) tv.push(trace(rows, function (k) { var st = step(i, k); return [bx(i, k), by(i, k), st[0], st[1], st[2], st[3]]; }, i === 0 || i === cols));
+    for (j = 0; j <= rows; j++) th.push(trace(cols, function (k) { var st = step(k, j); return [bx(k, j), by(k, j), st[2], st[3], st[0], st[1]]; }, j === 0 || j === rows));
+    // The page bends smoothly, so fit a smooth surface to the traced shifts (ignoring streaks where a trace
+    // wandered onto symbols), then let each crossing settle onto its gridline close to that surface.
+    var smV = smoothFit(function (i, j) { return tv[i][j]; }), smH = smoothFit(function (i, j) { return th[j][i]; });
+    var dx = new Float64Array(NX * NY), dy = new Float64Array(NX * NY);
+    for (j = 0; j <= rows; j++) for (i = 0; i <= cols; i++) {
+      var st = step(i, j), x0 = bx(i, j), y0 = by(i, j), pv = smV(i, j), ph = smH(i, j);
+      var a = (i === 0 || i === cols) && (j === 0 || j === rows) ? 0 : findLine(x0 + ph * st[2], y0 + ph * st[3], st[0], st[1], st[2], st[3], pv, 0.16);
+      var c = (i === 0 || i === cols) && (j === 0 || j === rows) ? 0 : findLine(x0 + pv * st[0], y0 + pv * st[1], st[2], st[3], st[0], st[1], ph, 0.16);
+      if (a == null) a = pv; if (c == null) c = ph;
+      var k3 = j * NX + i;
+      dx[k3] = a * st[0] + c * st[2]; dy[k3] = a * st[1] + c * st[3];
+    }
+    function smoothFit(val) { // robust least-squares fit of a degree-4 surface in (u, v)
+      var terms = []; for (var p = 0; p <= 4; p++) for (var q = 0; p + q <= 4; q++) terms.push([p, q]);
+      var T = terms.length, coef = new Float64Array(T), w = null, pts = [];
+      for (var jj = 0; jj <= rows; jj++) for (var ii = 0; ii <= cols; ii++) {
+        var u = ii / cols * 2 - 1, v = jj / rows * 2 - 1;
+        pts.push({ f: terms.map(function (t) { return Math.pow(u, t[0]) * Math.pow(v, t[1]); }), y: val(ii, jj) });
+      }
+      for (var it = 0; it < 6; it++) {
+        var M = [], R = new Float64Array(T);
+        for (var r = 0; r < T; r++) M.push(new Float64Array(T));
+        pts.forEach(function (pt) {
+          var fit = 0; for (var t = 0; t < T; t++) fit += coef[t] * pt.f[t];
+          var res = Math.abs(pt.y - fit), wt = it === 0 ? 1 : res < 0.12 ? 1 : res < 0.4 ? 0.12 / res : 0.02;
+          for (var r2 = 0; r2 < T; r2++) { R[r2] += wt * pt.f[r2] * pt.y; for (var c2 = 0; c2 < T; c2++) M[r2][c2] += wt * pt.f[r2] * pt.f[c2]; }
+        });
+        for (r = 0; r < T; r++) M[r][r] += 1e-6;
+        coef = solve(M, R);
+      }
+      return function (ii, jj) {
+        var u = ii / cols * 2 - 1, v = jj / rows * 2 - 1, out = 0;
+        for (var t = 0; t < T; t++) out += coef[t] * Math.pow(u, terms[t][0]) * Math.pow(v, terms[t][1]);
+        return out;
+      };
+    }
+    // Smooth out lone crossings that jumped to a symbol or an outline.
+    for (var pass2 = 0; pass2 < 2; pass2++) {
+      var ndx = dx.slice(), ndy = dy.slice();
+      for (j = 1; j < rows; j++) for (var i2 = 1; i2 < cols; i2++) {
+        var xs = [], ys = [];
+        for (var p = -1; p <= 1; p++) for (var q = -1; q <= 1; q++) { if (p || q) { xs.push(dx[(j + q) * NX + i2 + p]); ys.push(dy[(j + q) * NX + i2 + p]); } }
+        xs.sort(function (u, v) { return u - v; }); ys.sort(function (u, v) { return u - v; });
+        var mx = (xs[3] + xs[4]) / 2, my = (ys[3] + ys[4]) / 2, k2 = j * NX + i2, sc = step(i2, j);
+        var cell = Math.max(Math.hypot(sc[0], sc[1]), Math.hypot(sc[2], sc[3]));
+        if (Math.hypot(dx[k2] - mx, dy[k2] - my) > 0.25 * cell) { ndx[k2] = mx; ndy[k2] = my; }
+      }
+      dx = ndx; dy = ndy;
+    }
+    var nodes = new Float64Array(NX * NY * 2);
+    for (var k4 = 0; k4 < NX * NY; k4++) { nodes[k4 * 2] = base[k4 * 2] + dx[k4]; nodes[k4 * 2 + 1] = base[k4 * 2 + 1] + dy[k4]; }
+    var c0 = step(Math.floor(cols / 2), Math.floor(rows / 2));
+    return { cols: cols, rows: rows, nodes: nodes, cellPx: Math.max(Math.hypot(c0[0], c0[1]), Math.hypot(c0[2], c0[3])) };
+  }
+  function solve(M, R) { // Gaussian elimination with partial pivoting
+    var n = R.length, A = M.map(function (row, i) { return Array.prototype.slice.call(row).concat([R[i]]); });
+    for (var c = 0; c < n; c++) {
+      var p = c; for (var r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+      var tmp = A[c]; A[c] = A[p]; A[p] = tmp;
+      if (Math.abs(A[c][c]) < 1e-12) continue;
+      for (r = 0; r < n; r++) if (r !== c) { var f = A[r][c] / A[c][c]; for (var k = c; k <= n; k++) A[r][k] -= f * A[c][k]; }
+    }
+    return A.map(function (row, i) { return Math.abs(row[i]) < 1e-12 ? 0 : row[n] / row[i]; });
+  }
+  // The grid from the four corners alone (no snapping): cheap enough to redraw while a corner is dragged.
+  function cornerGrid(corners, cols, rows) {
+    var map = quadMap(corners), NX = cols + 1, nodes = new Float64Array(NX * (rows + 1) * 2);
+    for (var j = 0; j <= rows; j++) for (var i = 0; i <= cols; i++) { var p = map(i / cols, j / rows); nodes[(j * NX + i) * 2] = p[0]; nodes[(j * NX + i) * 2 + 1] = p[1]; }
+    return { cols: cols, rows: rows, nodes: nodes, cellPx: 0 };
+  }
+  // A point on the page at grid position (gx, gy) in cells, inside the fitted grid.
+  function gridPoint(grid, gx, gy) {
+    var NX = grid.cols + 1, i = Math.max(0, Math.min(grid.cols - 1, Math.floor(gx))), j = Math.max(0, Math.min(grid.rows - 1, Math.floor(gy)));
+    var u = gx - i, v = gy - j, n = grid.nodes, a = (j * NX + i) * 2, b = a + 2, c = a + NX * 2, d = c + 2;
+    return [
+      (1 - u) * (1 - v) * n[a] + u * (1 - v) * n[b] + (1 - u) * v * n[c] + u * v * n[d],
+      (1 - u) * (1 - v) * n[a + 1] + u * (1 - v) * n[b + 1] + (1 - u) * v * n[c + 1] + u * v * n[d + 1]
+    ];
+  }
+  // How well a grid sits on printed gridlines: average darkness along its lines minus across cell middles.
+  function gridFit(img, grid) {
+    var on = 0, off = 0, n = 0;
+    function dark(p) { var c = pixelAt(img, p[0], p[1]); return 255 - (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]); }
+    for (var y = 0; y < grid.rows; y++) for (var x = 0; x < grid.cols; x++) {
+      for (var s2 = 0.25; s2 < 0.8; s2 += 0.25) {
+        on += dark(gridPoint(grid, x, y + s2)) + dark(gridPoint(grid, x + s2, y));
+        off += dark(gridPoint(grid, x + 0.5, y + s2)) + dark(gridPoint(grid, x + s2, y + 0.5));
+        n += 2;
+      }
+    }
+    return (on - off) / n;
+  }
+  // Each cell's printed tint (its lighter pixels) and how much of it is ink (a symbol), from its inner area so
+  // gridlines don't count.
+  function sampleCells(img, grid) {
+    var cols = grid.cols, rows = grid.rows, out = [];
+    var n = Math.max(5, Math.min(11, Math.round(grid.cellPx * 0.7)));
+    for (var y = 0; y < rows; y++) for (var x = 0; x < cols; x++) {
+      var px = [];
+      for (var j = 0; j < n; j++) for (var i = 0; i < n; i++) {
+        var q = gridPoint(grid, x + 0.25 + 0.5 * (i + 0.5) / n, y + 0.25 + 0.5 * (j + 0.5) / n);
+        var rgb = pixelAt(img, q[0], q[1]); px.push({ rgb: rgb, lab: rgbToLab(rgb) });
+      }
+      px.sort(function (A, B) { return B.lab[0] - A.lab[0]; });
+      var half = px.slice(0, Math.ceil(px.length * 0.3)), t = [0, 0, 0];
+      half.forEach(function (s) { t[0] += s.rgb[0]; t[1] += s.rgb[1]; t[2] += s.rgb[2]; });
+      t = t.map(function (v2) { return v2 / half.length; });
+      out.push({ rgb: t, lab: rgbToLab(t), px: px }); // ink is measured once the lighting is known
+    }
+    return out;
+  }
+  // How many stitches across and down: gridlines run through the whole chart, so averaging darkness along
+  // them makes each line a peak; the count is the one whose evenly spaced positions best match those peaks.
+  function estimateGridCounts(img, corners) {
+    var map = quadMap(corners);
+    function edgeLen(a, b) { return Math.hypot(corners[b][0] - corners[a][0], corners[b][1] - corners[a][1]); }
+    var cols = countAlong(Math.round(Math.max(edgeLen(0, 1), edgeLen(3, 2))), function (t, s) { return map(t, s); });
+    var rows = countAlong(Math.round(Math.max(edgeLen(0, 3), edgeLen(1, 2))), function (t, s) { return map(s, t); });
+    return { cols: cols, rows: rows };
+    function countAlong(N, at) {
+      N = Math.max(16, Math.min(4000, N));
+      var M = 160, P = new Float64Array(N + 1);
+      for (var i = 0; i <= N; i++) {
+        var sum = 0;
+        for (var j = 0; j < M; j++) { var q = at(i / N, (j + 0.5) / M), c = pixelAt(img, q[0], q[1]); sum += 255 - (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]); }
+        P[i] = sum / M;
+      }
+      // Remove slow shading, then find the gridline spacing: the shortest lag where the profile strongly
+      // repeats (bold lines every 10 repeat too, but at a longer lag).
+      var Wm = Math.max(4, Math.round(N / 30)), pre = new Float64Array(N + 2), H = new Float64Array(N + 1);
+      for (i = 0; i <= N; i++) pre[i + 1] = pre[i] + P[i];
+      for (i = 0; i <= N; i++) { var l0 = Math.max(0, i - Wm), l1 = Math.min(N, i + Wm); H[i] = P[i] - (pre[l1 + 1] - pre[l0]) / (l1 - l0 + 1); }
+      var maxLag = Math.floor(N / 3), A = new Float64Array(maxLag + 2), top = 0;
+      for (var lag = 3; lag <= maxLag + 1; lag++) {
+        var acc = 0; for (i = 0; i + lag <= N; i++) acc += H[i] * H[i + lag];
+        A[lag] = acc / (N + 1 - lag);
+      }
+      // How much each repeat stands out from the lags just before it.
+      var prom = new Float64Array(maxLag + 1);
+      for (lag = 4; lag <= maxLag; lag++) {
+        if (!(A[lag] >= A[lag - 1] && A[lag] >= A[lag + 1])) continue;
+        var lo = Infinity; for (var k2 = Math.floor(lag / 2); k2 < lag; k2++) lo = Math.min(lo, A[k2]);
+        prom[lag] = A[lag] - lo; if (prom[lag] > top) top = prom[lag];
+      }
+      if (top <= 0) return 1;
+      var pitch = 0;
+      for (lag = 4; lag <= maxLag; lag++) if (prom[lag] >= 0.4 * top) { pitch = lag; break; }
+      if (!pitch) return 1;
+      // Refine the spacing to a sub-sample peak, then to the whole number of cells that fits.
+      var y0 = A[pitch - 1], y1 = A[pitch], y2 = A[pitch + 1], den = y0 - 2 * y1 + y2;
+      var exact = pitch + (den ? 0.5 * (y0 - y2) / den : 0);
+      var best = Math.max(1, Math.round(N / exact));
+      return best;
+    }
+  }
+  // A first guess at the chart's corners: the outermost long straight lines on the page. Exact on a flat PDF
+  // page; on an angled photo it is a starting point for the person to drag.
+  function guessChartCorners(img) {
+    var W = img.width, H = img.height, d = img.data;
+    function lineish(x, y) { var i = (y * W + x) * 4; return 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2] < 225; }
+    function longest(n, len, at) { // longest run of line-ish pixels along a row or column: [start, end]
+      var best = [0, -1], s = -1;
+      for (var k = 0; k <= len; k++) {
+        if (k < len && at(n, k)) { if (s < 0) s = k; }
+        else if (s >= 0) { if (k - 1 - s > best[1] - best[0]) best = [s, k - 1]; s = -1; }
+      }
+      return best;
+    }
+    var rowsHit = [], colsHit = [];
+    for (var y = 0; y < H; y++) { var r = longest(y, W, function (yy, x) { return lineish(x, yy); }); if (r[1] - r[0] + 1 >= 0.35 * W) rowsHit.push({ at: y, run: r }); }
+    for (var x = 0; x < W; x++) { var c = longest(x, H, function (xx, yy) { return lineish(xx, yy); }); if (c[1] - c[0] + 1 >= 0.35 * H) colsHit.push({ at: x, run: c }); }
+    if (rowsHit.length < 2 || colsHit.length < 2) {
+      var m = 0.08; return [[W * m, H * m], [W * (1 - m), H * m], [W * (1 - m), H * (1 - m)], [W * m, H * (1 - m)]];
+    }
+    var top = rowsHit[0].at, bottom = rowsHit[rowsHit.length - 1].at, left = colsHit[0].at, right = colsHit[colsHit.length - 1].at;
+    // Lines running right to the photo's edges are the background (a table, a couch), not the chart.
+    if (left <= W * 0.01 || top <= H * 0.01 || right >= W * 0.99 || bottom >= H * 0.99) {
+      var m2 = 0.08; return [[W * m2, H * m2], [W * (1 - m2), H * m2], [W * (1 - m2), H * (1 - m2)], [W * m2, H * (1 - m2)]];
+    }
+    return [[left, top], [right, top], [right, bottom], [left, bottom]];
+  }
+  // A phone photo lights the page unevenly and tints it. Fit the paper's color across the page (from cells that
+  // look like paper: pale and grey) and divide it out, so paper reads white everywhere and tints read true.
+  function evenLighting(s, cols, rows) {
+    var terms = [[0, 0], [1, 0], [0, 1], [2, 0], [1, 1], [0, 2]], T = terms.length;
+    function feats(k) { var u = (k % cols) / cols * 2 - 1, v = Math.floor(k / cols) / rows * 2 - 1; return terms.map(function (t) { return Math.pow(u, t[0]) * Math.pow(v, t[1]); }); }
+    var Ls = s.map(function (c) { return c.lab[0]; }).sort(function (a, b) { return a - b; }), Lhi = Ls[Math.floor(Ls.length * 0.6)];
+    var use = s.map(function (c) { return Math.hypot(c.lab[1], c.lab[2]) < 14 && c.lab[0] >= Lhi - 4; });
+    var white = null;
+    for (var it = 0; it < 4; it++) {
+      var coefs = [0, 1, 2].map(function (ch) {
+        var M = [], R = new Float64Array(T), n = 0;
+        for (var r = 0; r < T; r++) M.push(new Float64Array(T));
+        s.forEach(function (c, k) {
+          if (!use[k]) return; n++;
+          var f = feats(k);
+          for (var a = 0; a < T; a++) { R[a] += f[a] * c.rgb[ch]; for (var b = 0; b < T; b++) M[a][b] += f[a] * f[b]; }
+        });
+        if (n < T * 3) return null;
+        for (r = 0; r < T; r++) M[r][r] += 1e-6;
+        return solve(M, R);
+      });
+      if (coefs.some(function (c) { return !c; })) { white = null; break; }
+      white = s.map(function (c, k) { var f = feats(k); return coefs.map(function (cf) { var v = 0; for (var t = 0; t < T; t++) v += cf[t] * f[t]; return Math.max(40, v); }); });
+      use = s.map(function (c, k) { return dE76(c.lab, rgbToLab(white[k])) < 8; });
+    }
+    s.forEach(function (c) { c.paperL = 100; });
+    if (!white) { var Lmax = Ls[Math.floor(Ls.length * 0.9)]; s.forEach(function (c) { c.paperL = Lmax; }); return; }
+    s.forEach(function (c, k) {
+      c.paperL = rgbToLab(white[k])[0];
+      c.rgb = c.rgb.map(function (v, ch) { return Math.min(255, v * 255 / white[k][ch]); });
+      c.lab = rgbToLab(c.rgb);
+    });
+  }
+  var INK_MARK = 0.04;  // a cell with more ink than this carries a symbol
+  // Read a Source Chart: every cell becomes one group of look-alike cells; plain paper is its own group.
+  function readChart(img, opts) {
+    var cols = opts.cols, rows = opts.rows, grid = fitChartGrid(img, opts.corners, cols, rows), s = sampleCells(img, grid);
+    evenLighting(s, cols, rows);
+    // A symbol is a properly dark mark; thin grey lines (a design circle, a bold gridline at the edge) are not.
+    s.forEach(function (c) {
+      var ink = 0, cut = Math.min(c.lab[0] - 25, c.paperL - 50);
+      c.px.forEach(function (p) { if (p.lab[0] < cut) ink++; });
+      c.ink = ink / c.px.length; c.px = null;
+    });
+    // Paper: white once the lighting is evened out, with no symbol.
+    function isPaper(c) { return c.ink <= INK_MARK && dE76(c.lab, [100, 0, 0]) < 9; }
+    function dist(c, g) { return dE76(c.lab, g.lab) + 10 * Math.abs(c.ink - g.ink); }
+    var groups = [], assign = new Array(s.length);
+    s.forEach(function (c, k) {
+      if (isPaper(c)) { assign[k] = -1; return; }
+      var best = -1, bd = 14;
+      groups.forEach(function (g, gi) { var d = dist(c, g); if (d < bd) { bd = d; best = gi; } });
+      if (best < 0) { groups.push({ lab: c.lab.slice(), ink: c.ink, sum: [0, 0, 0, 0], n: 0 }); best = groups.length - 1; }
+      assign[k] = best;
+    });
+    // A few refinement passes: move each cell to its nearest group centre.
+    for (var pass = 0; pass < 3; pass++) {
+      groups.forEach(function (g) { g.acc = [0, 0, 0, 0]; g.n = 0; });
+      s.forEach(function (c, k) { var g = groups[assign[k]]; if (!g) return; g.acc[0] += c.lab[0]; g.acc[1] += c.lab[1]; g.acc[2] += c.lab[2]; g.acc[3] += c.ink; g.n++; });
+      groups = groups.filter(function (g) { return g.n; });
+      groups.forEach(function (g) { g.lab = [g.acc[0] / g.n, g.acc[1] / g.n, g.acc[2] / g.n]; g.ink = g.acc[3] / g.n; });
+      s.forEach(function (c, k) {
+        if (assign[k] < 0) return;
+        var best = 0, bd = Infinity;
+        groups.forEach(function (g, gi) { var d = dist(c, g); if (d < bd) { bd = d; best = gi; } });
+        assign[k] = best;
+      });
+    }
+    groups.forEach(function (g) { g.n = 0; }); assign.forEach(function (a) { if (a >= 0) groups[a].n++; });
+    // Merge groups that ended up nearly the same color (lighting or symbol density split one thread).
+    (function mergeClose() {
+      for (;;) {
+        var bi = -1, bj = -1, bd = 9;
+        for (var a = 0; a < groups.length; a++) for (var b = a + 1; b < groups.length; b++) {
+          if (!groups[a].n || !groups[b].n) continue;
+          var d = dE76(groups[a].lab, groups[b].lab); if (d < bd) { bd = d; bi = a; bj = b; }
+        }
+        if (bi < 0) return;
+        var A = groups[bi], B = groups[bj], n = A.n + B.n;
+        A.lab = [0, 1, 2].map(function (q) { return (A.lab[q] * A.n + B.lab[q] * B.n) / n; }); A.ink = (A.ink * A.n + B.ink * B.n) / n; A.n = n; B.n = 0;
+        assign.forEach(function (x, k) { if (x === bj) assign[k] = bi; });
+      }
+    })();
+    // Fold specks (a cell or two darkened by a crossing outline) into the look-alike group next to them.
+    groups.forEach(function (g, gi) {
+      if (g.n > 2) return;
+      var best = -1, bd = 25;
+      groups.forEach(function (h, hi) { if (hi !== gi && h.n > 2) { var d = dE76(g.lab, h.lab); if (d < bd) { bd = d; best = hi; } } });
+      if (best >= 0) { assign.forEach(function (a, k) { if (a === gi) assign[k] = best; }); groups[best].n += g.n; g.n = 0; }
+    });
+    var live = [], remap = groups.map(function (g) { if (!g.n) return -1; live.push(g); return live.length - 1; });
+    assign = assign.map(function (a) { return a < 0 ? -1 : remap[a]; }); groups = live;
+    // Describe each group: printed color, a representative cell, a DMC guess.
+    var out = groups.map(function (g, gi) {
+      var rgb = [0, 0, 0], n = 0, rep = -1, rd = Infinity;
+      s.forEach(function (c, k) {
+        if (assign[k] !== gi) return;
+        rgb[0] += c.rgb[0]; rgb[1] += c.rgb[1]; rgb[2] += c.rgb[2]; n++;
+        var d = dist(c, g); if (d < rd) { rd = d; rep = k; }
+      });
+      rgb = rgb.map(function (v) { return Math.round(v / n); });
+      return { rgb: rgb, hex: rgbHex(rgb), ink: g.ink, count: n, paper: false, guess: DMC[nearestDmc(rgbToLab(rgb))].code, sample: { x: rep % cols, y: Math.floor(rep / cols) } };
+    });
+    var order = out.map(function (g, i) { return i; }).sort(function (a, b) { return out[b].count - out[a].count; });
+    var rank = []; order.forEach(function (gi, r) { rank[gi] = r; });
+    var groupsOut = order.map(function (gi) { return out[gi]; });
+    var paperCells = assign.filter(function (a) { return a < 0; }).length;
+    var cells = assign.map(function (a) { return a < 0 ? groupsOut.length : rank[a]; });
+    if (paperCells) {
+      var pk = assign.indexOf(-1);
+      groupsOut.push({ rgb: s[pk].rgb.map(Math.round), hex: rgbHex(s[pk].rgb.map(Math.round)), ink: 0, count: paperCells, paper: true, guess: null, sample: { x: pk % cols, y: Math.floor(pk / cols) } });
+    }
+    return { cols: cols, rows: rows, cells: cells, groups: groupsOut, grid: grid };
+  }
+  // The custom Blank that holds a cols × rows chart cell for cell at a Fabric Count.
+  function chartBlank(cols, rows, count, finish) {
+    return { shape: 'custom', wIn: cols / count, hIn: rows / count, count: count, finish: finish || 'framed' };
+  }
+  // A Pattern from a reading: `flosses` gives each group's DMC code, or null for bare fabric.
+  function createImportedPattern(opts) {
+    var read = opts.read, idx = opts.flosses.map(function (code) { return code == null ? -1 : flossIndex(code); });
+    var p = createBlankPattern({ blank: chartBlank(read.cols, read.rows, opts.count || 14, opts.finish), palette: [] });
+    p.cells = read.cells.map(function (g) { return idx[g] == null ? -1 : idx[g]; });
+    p.palette = orderPalette(p.cells);
+    if (p.overcast) p.overcast = defaultOvercast(p.blank, p.cols, p.palette);
+    return p;
+  }
+  function rgbHex(rgb) { return '#' + rgb.map(function (v) { return ('0' + Math.max(0, Math.min(255, v)).toString(16)).slice(-2); }).join('').toUpperCase(); }
+
   // ---------- Chart ----------
   // High-contrast glyphs available in every PDF viewer's Helvetica; order = Palette order.
   // Look-alike pairs (Z/2, S/5, O/D, B/8, G/6, I/1, U/V) are deliberately avoided.
@@ -1106,13 +1571,15 @@ var PatternEngine = (function () {
       edits: [], past: [], future: []
     };
   }
-  // Move a Pattern onto another Blank, keeping each Stitch at its cell if that cell is inside the new shape.
+  // Move a Pattern onto another Blank, centred, keeping each Stitch that lands inside the new shape.
   // Starts a fresh undo history, since earlier states belong to the old grid.
   function reshape(p, blank) {
     var next = createBlankPattern({ blank: blank, palette: [], colorCount: p.colorCount, overcast: p.overcast && isOvercast(blank) ? p.overcast : null });
-    var inside = blankGrid(blank).inside;
-    for (var y = 0; y < Math.min(p.rows, next.rows); y++) for (var x = 0; x < Math.min(p.cols, next.cols); x++) {
-      var c = y * next.cols + x;
+    var inside = blankGrid(blank).inside, ox = Math.floor((next.cols - p.cols) / 2), oy = Math.floor((next.rows - p.rows) / 2);
+    for (var y = 0; y < p.rows; y++) for (var x = 0; x < p.cols; x++) {
+      var nx = x + ox, ny = y + oy;
+      if (nx < 0 || ny < 0 || nx >= next.cols || ny >= next.rows) continue;
+      var c = ny * next.cols + nx;
       if (inside[c]) next.cells[c] = p.cells[y * p.cols + x];
     }
     next.palette = p.palette.slice();
@@ -1137,6 +1604,8 @@ var PatternEngine = (function () {
     apply: apply, undo: undo, redo: redo, canUndo: canUndo, canRedo: canRedo, isEdited: isEdited,
     serialize: serialize, deserialize: deserialize,
     createBlankPattern: createBlankPattern, reshape: reshape, rebase: rebase,
+    readChart: readChart, estimateGridCounts: estimateGridCounts, fitChartGrid: fitChartGrid, gridPoint: gridPoint, cornerGrid: cornerGrid, guessChartCorners: guessChartCorners,
+    createImportedPattern: createImportedPattern, chartBlank: chartBlank,
     blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette
   };
 })();
@@ -1299,6 +1768,7 @@ var ChartPdf = (function () {
     frame: null, colorCount: 6, confetti: 1, pattern: null,
     tab: 'photo', tool: 'pencil', edgeTool: 'ring', bgTool: 'wand', tolerance: 20, brush: 24,
     floss: null, selected: null, showPhoto: false, bw: false,
+    source: null, // an imported Source Chart: { page, straight (canvases), corners, cols, rows, flosses }
     view: { zoom: 1, panX: 0, panY: 0 }, bgView: { zoom: 1, panX: 0, panY: 0 }, full: false
   };
 
@@ -1307,14 +1777,14 @@ var ChartPdf = (function () {
   // A hand-drawn Pattern: no photo, just the Blank and a starter Palette.
   function startBlank() {
     clearTimeout(saveTimer);
-    app.id = null; app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.frame = null;
+    app.id = null; app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.frame = null; app.source = null;
     app.maskPast = []; app.maskFuture = []; app.showPhoto = false;
     app.name = 'My drawing'; $('#name').value = app.name;
     app.view = { zoom: 1, panX: 0, panY: 0 };
     app.pattern = E.createBlankPattern({ blank: app.blank, palette: STARTER_PALETTE, colorCount: app.colorCount });
     app.floss = DEFAULT_FLOSS; app.selected = null; app.tool = 'pencil';
-    setTab('edit');
-    toast('Pick a color below and draw. Pinch to zoom in.');
+    setTab('blank');
+    toast('Pick the Blank, size and Fabric Count, then draw on Edit.');
     scheduleSave();
   }
 
@@ -1328,6 +1798,7 @@ var ChartPdf = (function () {
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); // browsers apply camera orientation when drawing
       URL.revokeObjectURL(url);
       setPhoto(c, null);
+      app.source = null;
       app.name = (file.name || 'Untitled keychain').replace(/\.[^.]+$/, '').slice(0, 40) || 'Untitled keychain';
       $('#name').value = app.name;
       app.id = null;
@@ -1469,6 +1940,7 @@ var ChartPdf = (function () {
     return 'rgb(' + Math.round(r * k) + ',' + Math.round(g * k) + ',' + Math.round(b * k) + ')';
   }
   function comparing() { return !!app.photo && app.showPhoto && (app.tab === 'colors' || app.tab === 'edit'); }
+  function comparingChart() { return !!app.source && app.showPhoto && (app.tab === 'colors' || app.tab === 'edit'); }
   function viewMode() { return !app.photo ? 'pattern' : app.tab === 'photo' || comparing() ? 'frame' : app.tab === 'background' ? 'bg' : 'pattern'; }
   function render() {
     var s = stageSize();
@@ -1476,9 +1948,15 @@ var ChartPdf = (function () {
     sctx.clearRect(0, 0, s.w, s.h);
     $('#empty').hidden = hasWork();
     $$('.js-nophoto').forEach(function (el) { el.hidden = !!app.photo || !app.pattern; });
+    $$('.js-chart-only').forEach(function (el) { el.hidden = !app.source; });
+    $$('.js-drawing-only').forEach(function (el) { el.hidden = !!app.photo || !!app.source || !app.pattern; });
     if (!hasWork()) { $('#readout').textContent = ''; setHint(''); return; }
     var mode = viewMode();
-    $$('.js-compare').forEach(function (b) { b.hidden = !(app.tab === 'colors' || app.tab === 'edit') || !app.pattern || !app.photo; b.setAttribute('aria-pressed', String(app.showPhoto)); });
+    $$('.js-compare').forEach(function (b) {
+      b.hidden = !(app.tab === 'colors' || app.tab === 'edit') || !app.pattern || !(app.photo || app.source);
+      b.setAttribute('aria-pressed', String(app.showPhoto));
+      b.textContent = b.classList.contains('stage-btn') ? 'Original' : app.source ? 'Show original chart' : 'Show original photo';
+    });
     if (mode === 'frame') renderFrame(); else if (mode === 'bg') renderBackground(); else renderPattern();
     renderReadout();
   }
@@ -1532,10 +2010,14 @@ var ChartPdf = (function () {
     // Stitches: real little crosses when there's room, solid squares when zoomed out.
     var sel = app.tab === 'colors' ? app.selected : null;
     var crosses = cs >= 7, inset = cs * 0.16;
+    if (comparingChart() && app.source.straight) {
+      sctx.imageSmoothingEnabled = true;
+      sctx.drawImage(app.source.straight, G.toX(0), G.toY(0), p.cols * cs, p.rows * cs);
+    }
     sctx.lineCap = 'round'; sctx.lineWidth = Math.max(1, cs * 0.26);
     for (y = 0; y < p.rows; y++) for (x = 0; x < p.cols; x++) {
       var fi = cells[y * p.cols + x];
-      if (fi < 0) continue;
+      if (fi < 0 || comparingChart()) continue;
       var fl = E.DMC[fi], X0 = G.toX(x), Y0 = G.toY(y);
       sctx.globalAlpha = sel && fl.code !== sel ? 0.18 : 1;
       if (crosses) {
@@ -1815,6 +2297,10 @@ var ChartPdf = (function () {
     if (finishes.indexOf(next.finish) < 0) next.finish = finishes[0];
     var counts = E.allowedCounts(next);
     if (counts.indexOf(next.count) < 0) next.count = counts.reduce(function (a, b) { return Math.abs(b - next.count) < Math.abs(a - next.count) ? b : a; });
+    // An imported chart is stitched cell for cell: a new Fabric Count changes its size in inches, not its stitches.
+    if (app.source && app.pattern && next.shape === 'custom' && app.blank.shape === 'custom' && next.count !== app.blank.count) {
+      next = E.chartBlank(app.pattern.cols, app.pattern.rows, next.count, next.finish);
+    }
     app.blank = next;
     if (app.frame) { var g = E.blankGrid(next); app.frame.s = app.frame.s * oldG.cols / g.cols; app.frame.fit = Math.min(app.photo.width / g.cols, app.photo.height / g.rows); }
     if (drawing) { app.pattern = E.reshape(app.pattern, next); changed(); return; }
@@ -1832,6 +2318,14 @@ var ChartPdf = (function () {
       el.setAttribute('aria-pressed', String(on));
     });
     $('#customRow').hidden = b.shape !== 'custom';
+    if (b.shape === 'custom') {
+      if (document.activeElement !== $('#customW')) $('#customW').value = fmt(b.wIn);
+      if (document.activeElement !== $('#customH')) $('#customH').value = fmt(b.hIn);
+    }
+    // Photo-only steps and controls are hidden for hand-drawn and imported Patterns.
+    var noPhoto = !!p && !app.photo;
+    $('[data-tab=photo]').hidden = noPhoto; $('[data-tab=background]').hidden = noPhoto;
+    $$('.js-photo-only').forEach(function (el) { el.hidden = noPhoto; });
     $('#cutoutRow').hidden = b.shape !== 'cutout';
     pressed($('#finish'), 'data-finish', b.finish);
     $('#finish [data-finish=framed]').disabled = b.shape === 'cutout';
@@ -1872,6 +2366,7 @@ var ChartPdf = (function () {
     $('#undo').disabled = !(p && E.canUndo(p));
     $('#redo').disabled = !(p && E.canRedo(p));
     if (!over && app.tab === 'edge') setTab('blank');
+    if (noPhoto && (app.tab === 'photo' || app.tab === 'background')) setTab('edit');
   }
   function stripHtml(pal) {
     return pal.map(function (f) { return '<button style="background:' + f.hex + '" data-pick="' + f.code + '" aria-label="DMC ' + f.code + ' ' + f.name + '" aria-pressed="' + (app.floss === f.code) + '"></button>'; }).join('') +
@@ -1994,9 +2489,12 @@ var ChartPdf = (function () {
     if (!app.pattern) return Promise.resolve();
     if (!app.id) app.id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     var id = app.id;
-    return new Promise(function (resolve) { if (app.photo) app.photo.toBlob(resolve, 'image/jpeg', 0.9); else resolve(null); }).then(function (photo) {
+    return Promise.all([
+      new Promise(function (resolve) { if (app.photo) app.photo.toBlob(resolve, 'image/jpeg', 0.9); else resolve(null); }),
+      sourceRecord()
+    ]).then(function (got) {
       var rec = {
-        id: id, name: app.name, updatedAt: Date.now(), thumb: thumbnail(), photo: photo,
+        id: id, name: app.name, updatedAt: Date.now(), thumb: thumbnail(), photo: got[0], source: got[1],
         mask: app.mask ? E.encodeMask(app.mask) : null, blank: app.blank, frame: app.frame, colorCount: app.colorCount, confetti: app.confetti,
         pattern: E.serialize(app.pattern)
       };
@@ -2005,10 +2503,40 @@ var ChartPdf = (function () {
       try { localStorage.setItem('stitch-keychains:current', id); } catch (e) { /* private mode */ }
     }).catch(function (err) { toast('Could not save on this phone: ' + (err && err.message || 'storage error') + '. Free up space and try again.'); });
   }
+  // The Source Chart rides along with an imported Pattern so Show original and Re-read chart work later.
+  // Its images are encoded once and reused on every save.
+  function sourceRecord() {
+    var src = app.source;
+    if (!src) return Promise.resolve(null);
+    function blob(c, key) {
+      if (src[key]) return Promise.resolve(src[key]);
+      return new Promise(function (r) { c.toBlob(r, 'image/jpeg', 0.88); }).then(function (b) { src[key] = b; return b; });
+    }
+    return Promise.all([blob(src.page, 'pageBlob'), blob(src.straight, 'straightBlob')]).then(function (b) {
+      return { page: b[0], straight: b[1], corners: src.corners, cols: src.cols, rows: src.rows, flosses: src.flosses };
+    });
+  }
+  function canvasFromBlob(b) {
+    return createImageBitmap(b).then(function (bmp) { var c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height; c.getContext('2d').drawImage(bmp, 0, 0); return c; });
+  }
   function openSaved(id) {
     return withStore('readonly', function (s) { return s.get(id); }).then(function (rec) {
       if (!rec) return;
+      if (rec.source) { // imported Source Chart
+        return Promise.all([canvasFromBlob(rec.source.page), canvasFromBlob(rec.source.straight)]).then(function (cv) {
+          app.id = rec.id; app.name = rec.name; $('#name').value = rec.name;
+          app.blank = rec.blank; app.frame = null; app.colorCount = rec.colorCount; app.confetti = rec.confetti;
+          app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.maskPast = []; app.maskFuture = [];
+          app.source = { page: cv[0], straight: cv[1], pageBlob: rec.source.page, straightBlob: rec.source.straight, corners: rec.source.corners, cols: rec.source.cols, rows: rec.source.rows, flosses: rec.source.flosses };
+          app.pattern = E.deserialize(rec.pattern);
+          var f1 = E.palette(app.pattern)[0]; app.floss = f1 ? f1.code : DEFAULT_FLOSS; app.selected = null; app.showPhoto = false;
+          app.view = { zoom: 1, panX: 0, panY: 0 };
+          try { localStorage.setItem('stitch-keychains:current', rec.id); } catch (e) { /* ignore */ }
+          setTab('edit');
+        });
+      }
       if (!rec.photo) { // hand-drawn
+        app.source = null;
         app.id = rec.id; app.name = rec.name; $('#name').value = rec.name;
         app.blank = rec.blank; app.frame = null; app.colorCount = rec.colorCount; app.confetti = rec.confetti;
         app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.maskPast = []; app.maskFuture = [];
@@ -2023,7 +2551,7 @@ var ChartPdf = (function () {
         var c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
         c.getContext('2d').drawImage(bmp, 0, 0);
         app.id = rec.id; app.name = rec.name; $('#name').value = rec.name;
-        app.blank = rec.blank; app.frame = rec.frame; app.colorCount = rec.colorCount; app.confetti = rec.confetti;
+        app.blank = rec.blank; app.frame = rec.frame; app.colorCount = rec.colorCount; app.confetti = rec.confetti; app.source = null;
         setPhoto(c, E.decodeMask(rec.mask, c.width * c.height));
         app.pattern = E.deserialize(rec.pattern);
         var first = E.palette(app.pattern)[0]; app.floss = first ? first.code : DEFAULT_FLOSS; app.selected = null;
@@ -2063,10 +2591,273 @@ var ChartPdf = (function () {
 
   function startNew() {
     clearTimeout(saveTimer);
-    app.id = null; app.photo = null; app.photoData = null; app.mask = null; app.pattern = null; app.frame = null; app.name = 'Untitled keychain'; $('#name').value = app.name;
+    app.id = null; app.photo = null; app.photoData = null; app.mask = null; app.pattern = null; app.frame = null; app.source = null; app.name = 'Untitled keychain'; $('#name').value = app.name;
     try { localStorage.removeItem('stitch-keychains:current'); } catch (e) { /* ignore */ }
     setTab('photo');
   }
+
+  // ---------- importing a Source Chart ----------
+  // The engine reads the chart; this shell gets the page as pixels (an image, or a PDF page drawn by pdf.js,
+  // loaded only when needed: ADR 0002), lets the person place the corners and confirm counts and threads.
+  var PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+  var MAX_SOURCE = 2000;  // longest side of the working chart page
+  var imp = null;         // { page, data, corners, cols, rows, typed, read, flosses, reread }
+  var importer = $('#importer'), impCanvas = $('#impCanvas'), ictx = impCanvas.getContext('2d');
+  function impStep(name) { $$('.imp-step', importer).forEach(function (el) { el.classList.toggle('on', el.dataset.step === name); }); if (name === 'grid') requestAnimationFrame(drawImport); }
+  function impBusy(text) { $('#impBusy').hidden = !text; if (text) $('#impBusyText').textContent = text; }
+  function openImporter(title) { $('#impTitle').textContent = title || 'Import a chart'; if (!importer.open) importer.showModal(); }
+  function loadPdfJs() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    return new Promise(function (resolve, reject) {
+      var sc = document.createElement('script');
+      sc.src = PDFJS + 'pdf.min.js';
+      sc.onload = function () {
+        if (!window.pdfjsLib) { reject(new Error('the PDF reader did not start')); return; }
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
+        resolve(window.pdfjsLib);
+      };
+      sc.onerror = function () { sc.remove(); reject(new Error('the PDF reader needs the internet the first time')); };
+      document.head.appendChild(sc);
+    });
+  }
+  function renderPdfPage(pdf, n, maxSide) {
+    return pdf.getPage(n).then(function (pg) {
+      var v1 = pg.getViewport({ scale: 1 }), sc = maxSide / Math.max(v1.width, v1.height), vp = pg.getViewport({ scale: sc });
+      var c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      var cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height);
+      return pg.render({ canvasContext: cx, viewport: vp }).promise.then(function () { return c; });
+    });
+  }
+  function importFile(file) {
+    var name = (file.name || 'Imported chart').replace(/\.[^.]+$/, '').slice(0, 40) || 'Imported chart';
+    openImporter();
+    if (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name || '')) {
+      impStep('pages'); $('#impPages').innerHTML = ''; impBusy('Opening the PDF…');
+      loadPdfJs().then(function (lib) { return file.arrayBuffer().then(function (buf) { return lib.getDocument({ data: buf }).promise; }); }).then(function (pdf) {
+        if (pdf.numPages === 1) return renderPdfPage(pdf, 1, MAX_SOURCE).then(function (c) { impBusy(''); startGrid(c, name); });
+        var n = Math.min(pdf.numPages, 40), chain = Promise.resolve();
+        impBusy('');
+        for (var k = 1; k <= n; k++) (function (k) {
+          chain = chain.then(function () { return renderPdfPage(pdf, k, 220); }).then(function (c) {
+            var b = document.createElement('button'); b.dataset.page = k;
+            b.innerHTML = '<img alt="" src="' + c.toDataURL('image/jpeg', 0.7) + '">Page ' + k;
+            $('#impPages').appendChild(b);
+          });
+        })(k);
+        imp = { pdf: pdf, name: name };
+      }).catch(function (err) { impBusy(''); importer.close(); toast('Could not open that PDF: ' + (err && err.message || 'unknown error') + '.'); });
+      return;
+    }
+    var url = URL.createObjectURL(file), img = new Image();
+    impBusy('Opening the picture…'); impStep('grid');
+    img.onload = function () {
+      var sc = Math.min(1, MAX_SOURCE / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.naturalWidth * sc)); c.height = Math.max(1, Math.round(img.naturalHeight * sc));
+      var cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height); cx.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); impBusy(''); startGrid(c, name);
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); impBusy(''); importer.close(); toast('That file could not be opened. Try a JPEG, PNG or PDF.'); };
+    img.src = url;
+  }
+  $('#impPages').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-page]'); if (!b || !imp || !imp.pdf) return;
+    impBusy('Opening page ' + b.dataset.page + '…');
+    renderPdfPage(imp.pdf, +b.dataset.page, MAX_SOURCE).then(function (c) { impBusy(''); startGrid(c, imp.name); })
+      .catch(function (err) { impBusy(''); toast('Could not draw that page: ' + (err && err.message || 'unknown error')); });
+  });
+  // saved: { corners, cols, rows, flosses } when re-reading an imported Pattern
+  function startGrid(page, name, saved) {
+    var data = page.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, page.width, page.height);
+    imp = { page: page, data: data, name: name, reread: !!saved, flosses: saved ? saved.flosses : null };
+    if (saved) { imp.corners = saved.corners.map(function (p) { return p.slice(); }); imp.cols = saved.cols; imp.rows = saved.rows; imp.typed = true; }
+    else { imp.corners = E.guessChartCorners(data); var n = E.estimateGridCounts(data, imp.corners); imp.cols = n.cols; imp.rows = n.rows; imp.typed = false; }
+    syncCounts(); openImporter(saved ? 'Re-read chart' : 'Import a chart'); impStep('grid');
+  }
+  function syncCounts() { $('#impCols').value = imp.cols; $('#impRows').value = imp.rows; }
+  function guessCounts() { var n = E.estimateGridCounts(imp.data, imp.corners); imp.cols = Math.max(2, n.cols); imp.rows = Math.max(2, n.rows); syncCounts(); drawImport(); }
+  // Page ↔ screen for the importer canvas.
+  function impGeom() {
+    var r = impCanvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    var w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    if (impCanvas.width !== w || impCanvas.height !== h) { impCanvas.width = w; impCanvas.height = h; }
+    var pad = 22, sc = Math.min((r.width - 2 * pad) / imp.page.width, (r.height - 2 * pad) / imp.page.height);
+    var ox = (r.width - imp.page.width * sc) / 2, oy = (r.height - imp.page.height * sc) / 2;
+    return { dpr: dpr, w: r.width, h: r.height, sc: sc, ox: ox, oy: oy,
+      toS: function (p) { return [ox + p[0] * sc, oy + p[1] * sc]; }, toP: function (x, y) { return [(x - ox) / sc, (y - oy) / sc]; } };
+  }
+  function drawImport() {
+    if (!imp || !imp.page || !importer.open) return;
+    var g = impGeom();
+    ictx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0); ictx.clearRect(0, 0, g.w, g.h);
+    ictx.imageSmoothingQuality = 'high';
+    ictx.drawImage(imp.page, g.ox, g.oy, imp.page.width * g.sc, imp.page.height * g.sc);
+    var grid = E.cornerGrid(imp.corners, imp.cols, imp.rows);
+    function seg(a, b, bold) {
+      var p = g.toS(E.gridPoint(grid, a[0], a[1])), q = g.toS(E.gridPoint(grid, b[0], b[1]));
+      ictx.lineWidth = bold ? 1.6 : 0.8; ictx.strokeStyle = bold ? 'rgba(122,62,157,0.95)' : 'rgba(122,62,157,0.55)';
+      ictx.beginPath(); ictx.moveTo(p[0], p[1]); ictx.lineTo(q[0], q[1]); ictx.stroke();
+    }
+    var a0 = g.toS(imp.corners[0]), a1 = g.toS(imp.corners[1]);
+    var dense = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) / imp.cols > 4; // every line only when they're far enough apart
+    for (var i = 0; i <= imp.cols; i++) if (dense || i % 5 === 0 || i === imp.cols) seg([i, 0], [i, imp.rows], i === 0 || i === imp.cols);
+    for (var j = 0; j <= imp.rows; j++) if (dense || j % 5 === 0 || j === imp.rows) seg([0, j], [imp.cols, j], j === 0 || j === imp.rows);
+    imp.corners.forEach(function (c, k) {
+      var s2 = g.toS(c);
+      ictx.fillStyle = 'rgba(122,62,157,0.22)'; ictx.beginPath(); ictx.arc(s2[0], s2[1], 18, 0, Math.PI * 2); ictx.fill();
+      ictx.fillStyle = drag && drag.k === k ? '#34193A' : '#7A3E9D'; ictx.beginPath(); ictx.arc(s2[0], s2[1], 7, 0, Math.PI * 2); ictx.fill();
+      ictx.strokeStyle = '#fff'; ictx.lineWidth = 2; ictx.stroke();
+    });
+  }
+  var drag = null;
+  impCanvas.addEventListener('pointerdown', function (ev) {
+    if (!imp || !imp.page) return;
+    var g = impGeom(), r = impCanvas.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top, best = -1, bd = 44;
+    imp.corners.forEach(function (c, k) { var s2 = g.toS(c), d = Math.hypot(s2[0] - x, s2[1] - y); if (d < bd) { bd = d; best = k; } });
+    if (best < 0) return;
+    var s0 = g.toS(imp.corners[best]);
+    drag = { k: best, id: ev.pointerId, offX: s0[0] - x, offY: s0[1] - y };
+    try { impCanvas.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
+    ev.preventDefault(); moveCorner(ev);
+  });
+  impCanvas.addEventListener('pointermove', function (ev) { if (drag && ev.pointerId === drag.id) moveCorner(ev); });
+  function endDrag(ev) {
+    if (!drag || ev.pointerId !== drag.id) return;
+    drag = null; $('#impLoupe').hidden = true;
+    if (!imp.typed) guessCounts(); else drawImport();
+  }
+  impCanvas.addEventListener('pointerup', endDrag);
+  impCanvas.addEventListener('pointercancel', endDrag);
+  function moveCorner(ev) {
+    var g = impGeom(), r = impCanvas.getBoundingClientRect(), x = ev.clientX - r.left + drag.offX, y = ev.clientY - r.top + drag.offY;
+    var p = g.toP(x, y);
+    imp.corners[drag.k] = [Math.max(0, Math.min(imp.page.width - 1, p[0])), Math.max(0, Math.min(imp.page.height - 1, p[1]))];
+    drawImport(); drawLoupe(g, x);
+  }
+  // A magnifier away from the finger, so the corner can be placed exactly.
+  function drawLoupe(g, fingerX) {
+    var lp = $('#impLoupe'), lc = lp.getContext('2d'), c = imp.corners[drag.k], z = 4, half = 66 / z;
+    lp.hidden = false;
+    lp.style.left = fingerX < g.w / 2 ? 'auto' : '10px'; lp.style.right = fingerX < g.w / 2 ? '10px' : 'auto';
+    lc.fillStyle = '#fff'; lc.fillRect(0, 0, 132, 132);
+    var ps = Math.max(1, g.sc);
+    lc.imageSmoothingEnabled = false;
+    lc.drawImage(imp.page, c[0] - half / ps, c[1] - half / ps, 2 * half / ps, 2 * half / ps, 0, 0, 132, 132);
+    lc.strokeStyle = '#7A3E9D'; lc.lineWidth = 1.5;
+    lc.beginPath(); lc.moveTo(66, 0); lc.lineTo(66, 132); lc.moveTo(0, 66); lc.lineTo(132, 66); lc.stroke();
+  }
+  function setCount(which, v) { imp[which] = Math.max(2, Math.min(400, Math.round(+v) || imp[which])); imp.typed = true; syncCounts(); drawImport(); }
+  $('#impCols').addEventListener('change', function () { setCount('cols', this.value); });
+  $('#impRows').addEventListener('change', function () { setCount('rows', this.value); });
+  window.addEventListener('resize', function () { if (importer.open) drawImport(); });
+  function readImport() {
+    impBusy('Reading the chart…');
+    setTimeout(function () { // let the message paint first; reading a big page takes a few seconds
+      try {
+        var prev = imp.read;
+        imp.read = E.readChart(imp.data, { corners: imp.corners, cols: imp.cols, rows: imp.rows });
+        var keep = imp.flosses && imp.flosses.length === imp.read.groups.length && !prev;
+        imp.flosses = imp.read.groups.map(function (gr, k) { return keep ? imp.flosses[k] : gr.paper ? null : gr.guess; });
+        showThreads(); impBusy(''); impStep('threads');
+      } catch (err) { impBusy(''); toast('Could not read the chart: ' + (err && err.message || 'unknown error')); }
+    }, 40);
+  }
+  function matchCode(t) {
+    t = String(t || '').trim().replace(/^dmc\s*/i, '');
+    if (!t) return null;
+    var tries = [t, t.toUpperCase(), t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()];
+    for (var i = 0; i < tries.length; i++) if (dmc(tries[i])) return dmc(tries[i]).code;
+    return null;
+  }
+  // A close-up of a group's sample cell, cut from the page along the fitted grid.
+  function cellCloseUp(gr) {
+    var c = document.createElement('canvas'), N = 44; c.width = c.height = N;
+    var out = c.getContext('2d').createImageData(N, N), d = imp.data, grid = imp.read.grid;
+    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+      var q = E.gridPoint(grid, gr.sample.x - 0.2 + 1.4 * x / N, gr.sample.y - 0.2 + 1.4 * y / N);
+      var px = Math.max(0, Math.min(d.width - 1, Math.round(q[0]))), py = Math.max(0, Math.min(d.height - 1, Math.round(q[1]))), i = (py * d.width + px) * 4, o = (y * N + x) * 4;
+      out.data[o] = d.data[i]; out.data[o + 1] = d.data[i + 1]; out.data[o + 2] = d.data[i + 2]; out.data[o + 3] = 255;
+    }
+    c.getContext('2d').putImageData(out, 0, 0);
+    return c;
+  }
+  function showThreads() {
+    var list = $('#impThreads'); list.innerHTML = '';
+    imp.read.groups.forEach(function (gr, k) {
+      var code = imp.flosses[k], row = document.createElement('div');
+      row.className = 'thread' + (code == null ? ' bare' : ''); row.dataset.k = k;
+      var printed = document.createElement('span'); printed.className = 'printed'; printed.style.background = gr.hex; printed.title = 'Printed color';
+      row.appendChild(cellCloseUp(gr)); row.appendChild(printed);
+      var f = document.createElement('div'); f.className = 'fields';
+      f.innerHTML = '<div class="row"><input type="text" inputmode="text" autocomplete="off" aria-label="DMC number" placeholder="DMC" value="' + (code || '') + '">' +
+        '<button class="secondary" data-act="imp-pick">Pick</button>' +
+        '<button class="secondary" data-act="imp-bare" aria-pressed="' + (code == null) + '">Bare fabric</button></div>' +
+        '<div class="nm"></div>';
+      row.appendChild(f); list.appendChild(row);
+      threadName(row);
+    });
+  }
+  function threadName(row) {
+    var k = +row.dataset.k, gr = imp.read.groups[k], code = imp.flosses[k], nm = $('.nm', row), fl = code && dmc(code);
+    row.classList.toggle('bare', code == null);
+    $('[data-act=imp-bare]', row).setAttribute('aria-pressed', String(code == null));
+    nm.classList.toggle('bad', !fl && code != null);
+    nm.textContent = (code == null ? 'Left as bare fabric' : fl ? fl.name : 'Not a DMC number') + ' · ' + gr.count + ' cell' + (gr.count === 1 ? '' : 's');
+  }
+  $('#impThreads').addEventListener('input', function (ev) {
+    var row = ev.target.closest('.thread'); if (!row) return;
+    var k = +row.dataset.k, t = ev.target.value.trim(), m = matchCode(t);
+    imp.flosses[k] = t ? (m || t) : null;
+    threadName(row);
+  });
+  $('#impThreads').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button'), row = ev.target.closest('.thread'); if (!b || !row) return;
+    ev.stopPropagation();
+    var k = +row.dataset.k;
+    if (b.dataset.act === 'imp-bare') {
+      imp.flosses[k] = imp.flosses[k] == null ? imp.read.groups[k].guess : null;
+      $('input', row).value = imp.flosses[k] || ''; threadName(row);
+    } else if (b.dataset.act === 'imp-pick') {
+      openPicker('Thread for this color', null, function (code) { imp.flosses[k] = code; $('input', row).value = code; threadName(row); });
+    }
+  });
+  function makeImported() {
+    var bad = imp.flosses.filter(function (c) { return c != null && !dmc(c); });
+    if (bad.length) { toast('Check the DMC numbers marked in red (or mark them Bare fabric).'); return; }
+    if (imp.flosses.every(function (c) { return c == null; })) { toast('Every color is bare fabric, so there is nothing to stitch.'); return; }
+    var keepId = imp.reread && app.source ? app.id : null, count = imp.reread ? app.blank.count : 14, finish = imp.reread ? app.blank.finish : 'framed';
+    var p = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, count: count, finish: finish });
+    clearTimeout(saveTimer);
+    app.id = keepId; app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.frame = null; app.maskPast = []; app.maskFuture = [];
+    app.source = { page: imp.page, straight: straighten(imp.read.grid), corners: imp.corners, cols: imp.cols, rows: imp.rows, flosses: imp.flosses.slice() };
+    app.blank = p.blank; app.pattern = p; app.showPhoto = false; app.selected = null;
+    if (!imp.reread) { app.name = imp.name; $('#name').value = app.name; }
+    var f0 = E.palette(p)[0]; app.floss = f0 ? f0.code : DEFAULT_FLOSS; app.tool = 'pencil';
+    app.view = { zoom: 1, panX: 0, panY: 0 };
+    importer.close(); imp = null;
+    setTab('edit');
+    toast('Chart imported: ' + p.cols + ' × ' + p.rows + ' stitches. Check it against the original with Original.');
+    scheduleSave();
+  }
+  // The chart laid flat along the fitted grid, for Show original.
+  function straighten(grid) {
+    var k = Math.max(4, Math.min(16, Math.floor(1400 / Math.max(grid.cols, grid.rows)))), W = grid.cols * k, H = grid.rows * k;
+    var c = document.createElement('canvas'); c.width = W; c.height = H;
+    var out = c.getContext('2d').createImageData(W, H), d = imp.data;
+    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+      var q = E.gridPoint(grid, (x + 0.5) / k, (y + 0.5) / k);
+      var px = Math.max(0, Math.min(d.width - 1, Math.round(q[0]))), py = Math.max(0, Math.min(d.height - 1, Math.round(q[1]))), i = (py * d.width + px) * 4, o = (y * W + x) * 4;
+      out.data[o] = d.data[i]; out.data[o + 1] = d.data[i + 1]; out.data[o + 2] = d.data[i + 2]; out.data[o + 3] = 255;
+    }
+    c.getContext('2d').putImageData(out, 0, 0);
+    return c;
+  }
+  function rereadChart() {
+    if (!app.source) return;
+    if (E.isEdited(app.pattern) && !confirm('Re-reading the chart replaces this pattern and discards your color and stitch edits. Continue?')) return;
+    startGrid(app.source.page, app.name, app.source);
+  }
+  importer.addEventListener('close', function () { drag = null; $('#impLoupe').hidden = true; impBusy(''); });
+  $('#chartFile').addEventListener('change', function () { if (this.files[0]) importFile(this.files[0]); this.value = ''; });
 
   // ---------- toast ----------
   var toastTimer = null;
@@ -2094,8 +2885,15 @@ var ChartPdf = (function () {
     if (t.dataset.size) { edit({ type: 'ring', size: +t.dataset.size }); return; }
     if (t.dataset.edge) { edit({ type: 'edgeMode', mode: t.dataset.edge }); return; }
     if (t.dataset.bw) { app.bw = t.dataset.bw === '1'; renderPanels(); return; }
+    if (t.dataset.count && imp) { setCount(t.dataset.count, imp[t.dataset.count] + (+t.dataset.d)); return; }
     switch (act) {
       case 'choose-photo': $('#file').click(); break;
+      case 'import-chart': $('#chartFile').click(); break;
+      case 'reread-chart': rereadChart(); break;
+      case 'imp-auto': if (imp) { imp.typed = false; guessCounts(); } break;
+      case 'imp-read': if (imp && imp.page) readImport(); break;
+      case 'imp-back': impStep('grid'); break;
+      case 'imp-make': if (imp && imp.read) makeImported(); break;
       case 'start-blank':
         if (app.pattern && !app.photo && E.isEdited(app.pattern) && !confirm('Start a new blank drawing? This one stays in My patterns.')) break;
         startBlank(); break;

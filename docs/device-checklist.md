@@ -32,9 +32,18 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 - [ ] Cut-Out: Margin 0–2 grows the cut line; the size line shows design and cut-piece sizes.
 
 ## Drawing without a photo
-- [ ] Draw my own opens Edit with a few starter colors; pencil, eraser and + Floss work; zoom in to place single Stitches.
-- [ ] Changing the Blank keeps the drawing where it fits; Overcast and Cut-Out edges follow the drawing.
+- [ ] Draw my own opens the Blank step (Photo and Background are hidden); pick a size and Fabric Count, then Edit has a few starter colors; pencil, eraser and + Floss work; zoom in to place single Stitches.
+- [ ] Changing the Blank keeps the drawing centred; Overcast gives the Edge step (ring hole, edge color); Cut-Out edges follow the drawing.
 - [ ] The drawing saves, reopens from My patterns, and exports a Chart.
+
+## Importing a chart
+- [ ] Import a chart takes a photo of a book page, a screenshot and a PDF (online the first time; then also offline).
+- [ ] A PDF with several pages shows page thumbnails; picking one opens it.
+- [ ] Dragging a corner dot shows the magnifier away from the finger; the purple lines can be lined up on the printed grid.
+- [ ] Counts are suggested; − / + and typing change them and the overlay follows.
+- [ ] Read chart lists the colors with close-ups; typing a DMC number shows its name; Pick and Bare fabric work.
+- [ ] The Pattern matches the chart (Original toggles the straightened chart over it); Fabric Count changes keep every stitch.
+- [ ] It reopens from My patterns; Re-read chart reopens the grid and warns before discarding edits.
 
 ## Chart and saving
 - [ ] Create Chart PDF opens the share sheet on iPhone (Save to Files, Print); downloads on Android.
