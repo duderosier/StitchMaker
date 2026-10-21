@@ -1,0 +1,15 @@
+#!/bin/sh
+# Guardrail for every commit (enable once per clone with: npm run hooks).
+# 1. When index.html is staged, bump the offline cache name in sw.js so installed phones fetch the new app.
+# 2. Run the syntax check and the engine tests.
+set -e
+if git diff --cached --name-only | grep -qx 'index.html'; then
+  if ! git diff --cached -U0 sw.js | grep -q "^+var CACHE"; then
+    n=$(sed -n "s/^var CACHE = 'stitch-keychains-v\([0-9]*\)';/\1/p" sw.js)
+    sed -i.bak "s/^var CACHE = 'stitch-keychains-v$n';/var CACHE = 'stitch-keychains-v$((n + 1))';/" sw.js && rm -f sw.js.bak
+    git add sw.js
+    echo "pre-commit: bumped offline cache to stitch-keychains-v$((n + 1))"
+  fi
+fi
+npm run -s check
+npm test --silent > /tmp/stitch-precommit-test.log 2>&1 || { cat /tmp/stitch-precommit-test.log; echo "pre-commit: tests failed"; exit 1; }

@@ -2,9 +2,9 @@
 
 Mobile web app (Android + iOS browsers) for turning an uploaded photo into a cross-stitch pattern sized for a keychain, with a control for how many colors to reduce the image to (similar to Cricut Design Space's color simplification).
 
-## Wording
+## Map
 
-Code, tests, specs and tickets use the exact terms in `GLOSSARY.md`. Labels people see in the app may use friendlier everyday words (for example "Colors" for the Palette, "Pick color", "Edge color", "On a tab" for a Ring Tab, "Thread" on the Chart); don't rename those to glossary terms.
+`index.html` is the whole app, in four inline scripts: `dmc` (the DMC table, one very long line; read around it), `engine` (pure Pattern Engine, the only tested seam), `pdf` (Chart PDF writer), `app` (UI). Sections inside each start with `// ---------- name ----------`. `sw.js`, the manifest and icons exist only for offline install (ADR 0001). Checks: `npm run check`, `npm test`, `npm run smoke`; `npm run hooks` once per clone. Review rules: `CODING_STANDARDS.md`.
 
 ## Agent skills
 

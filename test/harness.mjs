@@ -12,6 +12,7 @@ export function scriptBlock(id) {
 
 export function loadEngine() {
   // Same realm as the tests, so arrays/objects compare with deepStrictEqual.
+  vm.runInThisContext(scriptBlock('dmc'), { filename: 'dmc.js' });
   vm.runInThisContext(scriptBlock('engine'), { filename: 'engine.js' });
   return globalThis.PatternEngine;
 }

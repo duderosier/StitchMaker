@@ -1,0 +1,28 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Inline scripts parse
+        run: npm run check
+      - name: Pattern Engine tests
+        run: npm test
+      - name: Offline cache bumped with index.html
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        run: |
+          git fetch --depth=1 origin ${{ github.event.before }} || exit 0
+          if git diff --name-only ${{ github.event.before }} HEAD | grep -qx index.html; then
+            git diff ${{ github.event.before }} HEAD -- sw.js | grep -q "^+var CACHE" || { echo "index.html changed but the CACHE name in sw.js did not; run npm run hooks so the pre-commit hook bumps it"; exit 1; }
+          fi
+      - name: Browser smoke test
+        run: |
+          npm i --no-save playwright@1.56.0
+          npx playwright install --with-deps chromium
+          npm run smoke

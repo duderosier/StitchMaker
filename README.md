@@ -16,13 +16,18 @@ Open a terminal in this folder and run `python3 -m http.server 8000`, then visit
 
 Files that need to be on Pages: `index.html`, `sw.js`, `manifest.webmanifest`, `icon-180.png`, `icon-192.png`, `icon-512.png`. Everything else (tests, docs, `.scratch/`) is harmless to publish.
 
-**Shipping an update:** bump the `CACHE` name in `sw.js` (e.g. `-v2`) whenever you change `index.html`, so installed phones pick up the new version on their next launch (it is fetched in the background; the update shows the launch after that).
+**Shipping an update:** the pre-commit hook bumps the `CACHE` name in `sw.js` whenever `index.html` changes, so installed phones pick up the new version (fetched in the background; it shows on the launch after that). CI fails a push that forgets.
 
 ## Install on the phone
 
 - **iPhone (Safari):** open the Pages link → Share → **Add to Home Screen**. Open it once while online so it can work offline after that.
 - **Android (Chrome):** open the link → ⋮ menu → **Add to Home screen** / **Install app**.
 
-## Tests
+## Checks
 
-`npm test` runs the Pattern Engine tests under Node (no dependencies; the engine is extracted straight from `index.html`). `npm run check` confirms every inline script parses. The screens are checked by hand with `docs/device-checklist.md`.
+- `npm test`: Pattern Engine tests under Node (no dependencies; the engine is extracted straight from `index.html`).
+- `npm run check`: every inline script parses.
+- `npm run smoke`: drives the real page in Chromium at phone and unfolded-Fold sizes (layout, sliders, pinch zoom, full screen, PDF export, saving, drawing). Needs Playwright (`npm i --no-save playwright` and `npx playwright install chromium`).
+- `npm run hooks` once per clone: turns on the pre-commit hook, which runs the checks and bumps the offline cache name in `sw.js` whenever `index.html` changes.
+- GitHub Actions runs all of it on every push (`.github/workflows/ci.yml`).
+- On real phones, use `docs/device-checklist.md`.

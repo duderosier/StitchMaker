@@ -94,6 +94,11 @@ A single-page app, delivered as one self-contained HTML file served from GitHub 
 85. As a phone user, I want sliders to change only when I drag them sideways, so that scrolling the page over them never changes a setting.
 86. As a phone user, I want the preview to keep its size while I scroll or switch steps, and hints to get out of the way while I touch it.
 
+### Drawing without a photo
+87. As a stitcher, I want to pick a Blank and draw my own Pattern without choosing a photo, starting from a few common Flosses, so that I can design keychains by hand.
+88. As a stitcher, I want my drawing kept when I change the Blank, wherever it still fits, so that I can try sizes and shapes.
+89. As a stitcher, I want hand-drawn Patterns saved, reopened, edged and charted just like photo Patterns, so that both work the same.
+
 ### Chart (PDF)
 62. As a stitcher, I want to export a one-page Letter PDF Chart, so that I can print it or keep it on my phone.
 63. As a stitcher, I want the Chart grid to show colored cells with a distinct Symbol per Floss, so that I can read it in color or in black and white.

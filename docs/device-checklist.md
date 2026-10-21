@@ -31,6 +31,11 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 - [ ] Edge color: one color (pick from all DMC), Match design, and painting single edge stitches.
 - [ ] Cut-Out: Margin 0–2 grows the cut line; the size line shows design and cut-piece sizes.
 
+## Drawing without a photo
+- [ ] Draw my own opens Edit with a few starter colors; pencil, eraser and + Floss work; zoom in to place single Stitches.
+- [ ] Changing the Blank keeps the drawing where it fits; Overcast and Cut-Out edges follow the drawing.
+- [ ] The drawing saves, reopens from My patterns, and exports a Chart.
+
 ## Chart and saving
 - [ ] Create Chart PDF opens the share sheet on iPhone (Save to Files, Print); downloads on Android.
 - [ ] The PDF is one Letter page; Black and white has symbols only; legend counts look right.
