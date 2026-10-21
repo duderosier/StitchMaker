@@ -324,7 +324,7 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
 .imp-step { display: none; min-height: 0; }
 .imp-step.on { display: grid; }
 .imp-step[data-step=grid].on { grid-template-rows: minmax(0, 1fr) auto; }
-.imp-step[data-step=pages].on, .imp-step[data-step=threads].on { grid-template-rows: auto minmax(0, 1fr) auto; }
+.imp-step[data-step=pages].on, .imp-step[data-step=threads].on, .imp-step[data-step=place].on { grid-template-rows: auto minmax(0, 1fr) auto; }
 .imp-stage { position: relative; min-height: 0; margin: 0 14px; border-radius: var(--r-l); overflow: hidden; background: #fff; box-shadow: var(--shadow); }
 #impCanvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
 .loupe { position: absolute; left: 10px; top: 10px; width: 132px; height: 132px; border-radius: 999px; box-shadow: 0 0 0 4px #fff, var(--shadow); pointer-events: none; }
@@ -351,6 +351,8 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
 .thread .secondary[aria-pressed=true] { background: var(--ink); color: #fff; }
 .thread.bare { opacity: .7; }
 .imp-foot { padding: 12px 16px 14px; }
+.imp-place { display: block; width: 100%; height: 220px; margin: 10px 0 4px; border-radius: var(--r-m); background: #EDE4F3; }
+#impSide { flex-wrap: wrap; }
 .imp-busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(248, 242, 253, .86); font: 800 18px/1.2 var(--font); border-radius: inherit; }
 .imp-busy[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -487,6 +489,7 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
       <div class="actions">
         <button class="secondary js-compare" aria-pressed="false">Show original photo</button>
         <button class="secondary js-chart-only" data-act="reread-chart" hidden>Re-read chart</button>
+        <button class="secondary js-chart-only" data-act="add-chart-page" hidden>Add a chart page</button>
       </div>
       <p class="muted js-drawing-only" hidden>Hand-drawn pattern: add thread colors with + on the Edit step. Tap a color here to merge, swap or drop it.</p>
       <p class="muted js-chart-only" hidden>Imported chart: tap a color to merge, swap or drop it. Re-read chart to fix the grid or the thread numbers.</p>
@@ -633,6 +636,23 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
       <div class="imp-foot actions">
         <button class="secondary" data-act="imp-back">Back to grid</button>
         <button class="primary" data-act="imp-make">Make pattern</button>
+      </div>
+    </div>
+    <div class="imp-step" data-step="place">
+      <p class="muted" style="padding:0 14px">Where does this page go? The repeated <span class="js-overlap-what">columns</span> printed on both pages are found for you.</p>
+      <div class="dlg-body">
+        <div class="seg" id="impSide">
+          <button data-side="right" aria-pressed="true">Right of the last page</button>
+          <button data-side="below" aria-pressed="false">Start a new row</button>
+        </div>
+        <div class="row"><label for="impOverlap">Repeated <span class="js-overlap-what">columns</span></label>
+          <input type="number" id="impOverlap" min="0" max="12" step="1" value="0"></div>
+        <canvas id="impPlace" class="imp-place" aria-label="The joined chart, with the new page outlined"></canvas>
+        <p class="muted" id="impPlaceNote"></p>
+      </div>
+      <div class="imp-foot actions">
+        <button class="secondary" data-act="imp-to-threads">Back</button>
+        <button class="primary" data-act="imp-join">Add page</button>
       </div>
     </div>
     <div class="imp-busy" id="impBusy" hidden><span id="impBusyText">Reading the chart…</span></div>
@@ -1937,6 +1957,59 @@ var PatternEngine = (function () {
     if (p.overcast) p.overcast = defaultOvercast(p.blank, p.cols, p.palette);
     return p;
   }
+  // Charts on several pages: where the next page goes. `at` is where it would sit with nothing repeated (right of
+  // the last page, or below the row above); printed charts often repeat a few columns or rows across the page break,
+  // so slide it back by the overlap whose cells agree best (at least 97% of the stitched cells compared).
+  function chartPartOffset(p, q, at) {
+    var right = at.side === 'right', K = Math.min(12, right ? Math.min(q.cols - 1, at.x) : Math.min(q.rows - 1, at.y));
+    var best = { x: at.x, y: at.y, overlap: 0 }, bs = 0;
+    for (var k = 1; k <= K; k++) {
+      var ox = right ? at.x - k : at.x, oy = right ? at.y : at.y - k, same = 0, n = 0;
+      for (var y = 0; y < q.rows; y++) for (var x = 0; x < q.cols; x++) {
+        var px = ox + x, py = oy + y;
+        if (px < 0 || py < 0 || px >= p.cols || py >= p.rows) continue;
+        if (right ? px >= at.x : py >= at.y) continue; // only the strip p already has
+        var a = p.cells[py * p.cols + px], b = q.cells[y * q.cols + x];
+        if (a < 0 && b < 0) continue;
+        n++; if (a === b) same++;
+      }
+      var score = n >= 4 ? same / n : 0;
+      if (score >= 0.97 && score >= bs) { bs = score; best = { x: ox, y: oy, overlap: k }; }
+    }
+    return best;
+  }
+  // The Pattern grown to hold page q with its top-left at (pos.x, pos.y). Where pages overlap the first page wins
+  // (bare fabric there takes the new page's Stitch). A fresh undo history, as for any Blank change.
+  function joinChartPart(p, q, pos) {
+    var cols = Math.max(p.cols, pos.x + q.cols), rows = Math.max(p.rows, pos.y + q.rows);
+    var next = createBlankPattern({ blank: chartBlank(cols, rows, p.blank.count, p.blank.finish), palette: [], colorCount: p.colorCount, overcast: p.overcast });
+    var used = [];
+    function put(src, ox, oy, under) {
+      for (var y = 0; y < src.rows; y++) for (var x = 0; x < src.cols; x++) {
+        var c = (y + oy) * cols + x + ox, f = src.cells[y * src.cols + x], t = src.splits && src.splits[y * src.cols + x];
+        if (under && (next.cells[c] >= 0 || next.splits[c])) continue;
+        if (t) { next.splits[c] = t; next.cells[c] = -1; used.push(t.a, t.b); } else if (f >= 0 || !under) next.cells[c] = f;
+      }
+      (src.backstitches || []).forEach(function (b) {
+        var l = [b.x0 + ox, b.y0 + oy, b.x1 + ox, b.y1 + oy];
+        if (!next.backstitches.some(function (o) { return o.f === b.f && onLine(o, l); })) next.backstitches.push({ x0: l[0], y0: l[1], x1: l[2], y1: l[3], f: b.f });
+      });
+    }
+    put(p, 0, 0, false); put(q, pos.x, pos.y, true);
+    next.palette = orderPalette(next.cells, used.concat(p.palette, q.palette).filter(function (f, i, arr) { return f >= 0 && arr.indexOf(f) === i; }));
+    next.extraStitches = !!(p.extraStitches || q.extraStitches || next.backstitches.length || Object.keys(next.splits).length);
+    next.fit = p.fit || 'crop';
+    next.confetti = p.confetti;
+    return next;
+  }
+  // Whether line l lies along Backstitch o (the same line, or a piece of it).
+  function onLine(o, l) {
+    function on(x, y) {
+      var cross = (o.x1 - o.x0) * (y - o.y0) - (o.y1 - o.y0) * (x - o.x0);
+      return cross === 0 && x >= Math.min(o.x0, o.x1) && x <= Math.max(o.x0, o.x1) && y >= Math.min(o.y0, o.y1) && y <= Math.max(o.y0, o.y1);
+    }
+    return on(l[0], l[1]) && on(l[2], l[3]);
+  }
   function rgbHex(rgb) { return '#' + rgb.map(function (v) { return ('0' + Math.max(0, Math.min(255, v)).toString(16)).slice(-2); }).join('').toUpperCase(); }
 
   // ---------- Chart ----------
@@ -2171,7 +2244,7 @@ var PatternEngine = (function () {
     serialize: serialize, deserialize: deserialize,
     createBlankPattern: createBlankPattern, reshape: reshape, shrinkToFit: shrinkToFit, fitsBlank: fitsBlank, rebase: rebase,
     readChart: readChart, estimateGridCounts: estimateGridCounts, fitChartGrid: fitChartGrid, gridPoint: gridPoint, cornerGrid: cornerGrid, guessChartCorners: guessChartCorners,
-    createImportedPattern: createImportedPattern, chartBlank: chartBlank, keyCodesFromText: keyCodesFromText, keyGuesses: keyGuesses,
+    createImportedPattern: createImportedPattern, chartBlank: chartBlank, keyCodesFromText: keyCodesFromText, keyGuesses: keyGuesses, chartPartOffset: chartPartOffset, joinChartPart: joinChartPart,
     blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette,
     splitAt: splitAt, splitList: splitList, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, withFit: withFit, splitTriangles: splitTriangles, splitSide: splitSide
   };
@@ -2599,6 +2672,7 @@ var ChartPdf = (function () {
     $('#empty').hidden = hasWork();
     $$('.js-nophoto').forEach(function (el) { el.hidden = !!app.photo || !app.pattern; });
     $$('.js-chart-only').forEach(function (el) { el.hidden = !app.source; });
+    $$('[data-act=reread-chart]').forEach(function (el) { el.hidden = !app.source || !!app.source.joined; }); // it would re-read one page only
     $$('.js-drawing-only').forEach(function (el) { el.hidden = !!app.photo || !!app.source || !app.pattern; });
     if (!hasWork()) { $('#readout').textContent = ''; setHint(''); return; }
     var mode = viewMode();
@@ -3271,7 +3345,7 @@ var ChartPdf = (function () {
       return new Promise(function (r) { c.toBlob(r, 'image/jpeg', 0.88); }).then(function (b) { src[key] = b; return b; });
     }
     return Promise.all([blob(src.page, 'pageBlob'), blob(src.straight, 'straightBlob')]).then(function (b) {
-      return { page: b[0], straight: b[1], corners: src.corners, cols: src.cols, rows: src.rows, flosses: src.flosses, lineFlosses: src.lineFlosses || null, key: src.key || '' };
+      return { page: b[0], straight: b[1], corners: src.corners, cols: src.cols, rows: src.rows, flosses: src.flosses, lineFlosses: src.lineFlosses || null, key: src.key || '', joined: !!src.joined, pages: src.pages || 1, layout: src.layout || null };
     });
   }
   function canvasFromBlob(b) {
@@ -3285,7 +3359,8 @@ var ChartPdf = (function () {
           app.id = rec.id; app.name = rec.name; $('#name').value = rec.name;
           app.blank = rec.blank; app.frame = null; app.colorCount = rec.colorCount; app.confetti = rec.confetti;
           app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.maskPast = []; app.maskFuture = [];
-          app.source = { page: cv[0], straight: cv[1], pageBlob: rec.source.page, straightBlob: rec.source.straight, corners: rec.source.corners, cols: rec.source.cols, rows: rec.source.rows, flosses: rec.source.flosses, lineFlosses: rec.source.lineFlosses || null, key: rec.source.key || '' };
+          app.source = { page: cv[0], straight: cv[1], pageBlob: rec.source.page, straightBlob: rec.source.straight, corners: rec.source.corners, cols: rec.source.cols, rows: rec.source.rows, flosses: rec.source.flosses, lineFlosses: rec.source.lineFlosses || null, key: rec.source.key || '',
+            joined: !!rec.source.joined, pages: rec.source.pages || 1, layout: rec.source.layout || null };
           app.pattern = E.deserialize(rec.pattern);
           var f1 = E.palette(app.pattern)[0]; app.floss = f1 ? f1.code : DEFAULT_FLOSS; app.selected = null; app.showPhoto = false;
           app.view = { zoom: 1, panX: 0, panY: 0 };
@@ -3428,11 +3503,11 @@ var ChartPdf = (function () {
   // saved: { corners, cols, rows, flosses } when re-reading an imported Pattern
   function startGrid(page, name, saved) {
     var data = page.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, page.width, page.height);
-    imp = { page: page, data: data, name: name, reread: !!saved, flosses: saved ? saved.flosses : null, lineFlosses: saved ? saved.lineFlosses : null,
+    imp = { page: page, data: data, name: name, reread: !!saved, adding: !saved && addingPage, flosses: saved ? saved.flosses : null, lineFlosses: saved ? saved.lineFlosses : null,
       key: saved ? saved.key || '' : '', keyFrom: saved ? null : pdfKey, manual: {} };
     if (saved) { imp.corners = saved.corners.map(function (p) { return p.slice(); }); imp.cols = saved.cols; imp.rows = saved.rows; imp.typed = true; }
     else { imp.corners = E.guessChartCorners(data); var n = E.estimateGridCounts(data, imp.corners); imp.cols = n.cols; imp.rows = n.rows; imp.typed = false; }
-    syncCounts(); openImporter(saved ? 'Re-read chart' : 'Import a chart'); impStep('grid');
+    syncCounts(); openImporter(saved ? 'Re-read chart' : imp.adding ? 'Add a chart page' : 'Import a chart'); impStep('grid');
   }
   function syncCounts() { $('#impCols').value = imp.cols; $('#impRows').value = imp.rows; }
   function guessCounts() { var n = E.estimateGridCounts(imp.data, imp.corners); imp.cols = Math.max(2, n.cols); imp.rows = Math.max(2, n.rows); syncCounts(); drawImport(); }
@@ -3634,6 +3709,7 @@ var ChartPdf = (function () {
     var bad = imp.flosses.concat(imp.lineFlosses).filter(function (c) { return c != null && !dmc(c); });
     if (bad.length) { toast('Check the DMC numbers marked in red (or mark them Bare fabric).'); return; }
     if (imp.flosses.every(function (c) { return c == null; })) { toast('Every color is bare fabric, so there is nothing to stitch.'); return; }
+    if (imp.adding) { startPlacing(); return; }
     var keepId = imp.reread && app.source ? app.id : null, count = imp.reread ? app.blank.count : 14, finish = imp.reread ? app.blank.finish : 'framed';
     var p = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, count: count, finish: finish });
     clearTimeout(saveTimer);
@@ -3646,6 +3722,74 @@ var ChartPdf = (function () {
     importer.close(); imp = null;
     setTab('edit');
     toast('Chart imported: ' + p.cols + ' × ' + p.rows + ' stitches. Check it against the original with Original.');
+    scheduleSave();
+  }
+  // ---------- charts on several pages ----------
+  // A new page joins the imported Pattern at full size: right of the last page added, or starting a new row below.
+  // app.source.layout remembers { row: { x, y, h }, last: { x, y, cols, rows } } for the next page.
+  var addingPage = false;
+  function chartBase() { return app.fitFrom && app.fitFrom.to === app.pattern ? app.fitFrom.from : app.pattern; }
+  function addChartPage() {
+    if (!app.source || !app.pattern) return;
+    if (chartBase().blank.shape !== 'custom') { toast('Pages join the chart at full size: choose Custom size on the Blank step first.'); return; }
+    addingPage = true; $('#chartFile').click();
+  }
+  function pageLayout() {
+    var b = chartBase();
+    return app.source.layout || { row: { x: 0, y: 0, h: b.rows }, last: { x: 0, y: 0, cols: b.cols, rows: b.rows } };
+  }
+  function startPlacing() {
+    var base = chartBase();
+    imp.part = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, count: base.blank.count, finish: base.blank.finish });
+    impStep('place');
+    placeSide(imp.side || 'right');
+  }
+  function placeSide(side) {
+    var L = pageLayout(), right = side === 'right';
+    imp.side = side;
+    imp.nominal = right ? { side: side, x: L.last.x + L.last.cols, y: L.last.y } : { side: side, x: L.row.x, y: L.row.y + L.row.h };
+    imp.overlap = E.chartPartOffset(chartBase(), imp.part, imp.nominal).overlap;
+    pressed($('#impSide'), 'data-side', side);
+    $$('.js-overlap-what', importer).forEach(function (el) { el.textContent = right ? 'columns' : 'rows'; });
+    $('#impOverlap').value = imp.overlap;
+    drawPlace();
+  }
+  function placePos() {
+    var n = imp.nominal, k = imp.overlap;
+    return n.side === 'right' ? { x: Math.max(0, n.x - k), y: n.y } : { x: n.x, y: Math.max(0, n.y - k) };
+  }
+  function drawPlace() {
+    var c = $('#impPlace'), r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, pos = placePos();
+    var j = E.joinChartPart(chartBase(), imp.part, pos), cells = E.effectiveCells(j);
+    c.width = Math.max(1, Math.round(r.width * dpr)); c.height = Math.max(1, Math.round(r.height * dpr));
+    var cx = c.getContext('2d'), cs = Math.min(r.width / j.cols, r.height / j.rows), ox = (r.width - j.cols * cs) / 2, oy = (r.height - j.rows * cs) / 2;
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.clearRect(0, 0, r.width, r.height);
+    for (var y = 0; y < j.rows; y++) for (var x = 0; x < j.cols; x++) {
+      var f = cells[y * j.cols + x]; if (f < 0) continue;
+      cx.fillStyle = E.DMC[f].hex; cx.fillRect(ox + x * cs, oy + y * cs, Math.ceil(cs), Math.ceil(cs));
+    }
+    cx.strokeStyle = '#6B3482'; cx.lineWidth = 2;
+    cx.strokeRect(ox + pos.x * cs, oy + pos.y * cs, imp.part.cols * cs, imp.part.rows * cs);
+    var what = imp.nominal.side === 'right' ? 'column' : 'row';
+    $('#impPlaceNote').textContent = j.cols + ' × ' + j.rows + ' stitches once joined; ' + (imp.overlap ? imp.overlap + ' repeated ' + what + (imp.overlap === 1 ? '' : 's') + ' counted once.' : 'nothing repeated.');
+  }
+  $('#impOverlap').addEventListener('input', function () { if (!imp || !imp.part) return; imp.overlap = Math.max(0, Math.min(12, Math.round(+this.value) || 0)); drawPlace(); });
+  $('#impSide').addEventListener('click', function (ev) { var b = ev.target.closest('[data-side]'); if (b && imp && imp.part) placeSide(b.dataset.side); });
+  function joinPage() {
+    var base = chartBase(), pos = placePos(), q = imp.part, j = E.joinChartPart(base, q, pos), L = pageLayout(), src = app.source;
+    if (imp.nominal.side === 'right') L = { row: { x: L.row.x, y: L.row.y, h: Math.max(L.row.h, pos.y + q.rows - L.row.y) }, last: { x: pos.x, y: pos.y, cols: q.cols, rows: q.rows } };
+    else L = { row: { x: pos.x, y: pos.y, h: q.rows }, last: { x: pos.x, y: pos.y, cols: q.cols, rows: q.rows } };
+    // Show original: the pages laid flat side by side, as joined.
+    var k = Math.max(4, Math.min(16, Math.floor(1400 / Math.max(j.cols, j.rows)))), c = document.createElement('canvas');
+    c.width = j.cols * k; c.height = j.rows * k;
+    var cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height);
+    cx.drawImage(src.straight, 0, 0, base.cols * k, base.rows * k);
+    cx.drawImage(straighten(imp.read.grid), pos.x * k, pos.y * k, q.cols * k, q.rows * k);
+    app.source = Object.assign({}, src, { straight: c, straightBlob: null, joined: true, pages: (src.pages || 1) + 1, layout: L });
+    app.pattern = j; app.blank = j.blank; app.fitFrom = null; app.selected = null;
+    importer.close(); imp = null; addingPage = false;
+    setTab('edit');
+    toast('Page added: ' + j.cols + ' × ' + j.rows + ' stitches from ' + app.source.pages + ' pages.');
     scheduleSave();
   }
   // The chart laid flat along the fitted grid, for Show original.
@@ -3706,11 +3850,14 @@ var ChartPdf = (function () {
     if (t.dataset.count && imp) { setCount(t.dataset.count, imp[t.dataset.count] + (+t.dataset.d)); return; }
     switch (act) {
       case 'choose-photo': $('#file').click(); break;
-      case 'import-chart': $('#chartFile').click(); break;
+      case 'import-chart': addingPage = false; $('#chartFile').click(); break;
       case 'save-now':
         if (!app.pattern) { toast('Start a keychain first: pick a picture, import a chart or draw.'); break; }
         saveNow().then(function () { toast('Saved to My patterns ✦'); }); break;
       case 'reread-chart': rereadChart(); break;
+      case 'add-chart-page': addChartPage(); break;
+      case 'imp-to-threads': impStep('threads'); break;
+      case 'imp-join': if (imp && imp.part) joinPage(); break;
       case 'imp-auto': if (imp) { imp.typed = false; guessCounts(); } break;
       case 'imp-read': if (imp && imp.page) readImport(); break;
       case 'imp-back': impStep('grid'); break;
