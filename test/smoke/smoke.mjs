@@ -235,6 +235,14 @@ try {
     check(await page.inputValue('#impCols') === '24', `PDF page 2 shows the chart grid (${await page.inputValue('#impCols')} across)`);
   }
   await page.click('#importer [data-act=close-dialog]');
+  await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-knots.png'));
+  await page.waitForSelector('.imp-step[data-step=grid].on');
+  await page.waitForTimeout(300);
+  await page.click('[data-act=imp-read]');
+  await page.waitForSelector('.imp-step[data-step=threads].on', { timeout: 20000 });
+  const knotRow = await page.$$eval('#impThreads .thread[data-kind=knot] .nm', els => els.map(e => e.textContent).join(' | '));
+  check(/5 knots/.test(knotRow), `French knots on a chart are found for confirming (${knotRow})`);
+  await page.click('#importer [data-act=close-dialog]');
   await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-bw.png'));
   await page.waitForSelector('.imp-step[data-step=grid].on');
   await page.waitForTimeout(300);

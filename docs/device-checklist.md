@@ -44,6 +44,7 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 - [ ] Read chart lists the colors with close-ups; typing a DMC number shows its name; Pick and Bare fabric work.
 - [ ] A shop PDF fills "Numbers from the key" by itself and the colors get those numbers; typing numbers there re-guesses every color not set by hand.
 - [ ] A shop PDF that prints its symbols as text (most do) gets every color's DMC number from the key by symbol, even in black and white.
+- [ ] A chart with French knots (dots on grid corners) lists them under "French knots found on the chart"; they land as knots on the pattern.
 - [ ] A black-and-white (symbols only) chart lists one row per symbol with its close-up and a note to match it to the key.
 - [ ] Add a chart page (Colors step) reads another page or photo; the place step shows the joined chart with the new page outlined, finds repeated columns or rows, and Start a new row puts the page under the first one.
 - [ ] The Pattern matches the chart (Original toggles the straightened chart over it); Fabric Count changes keep every stitch.

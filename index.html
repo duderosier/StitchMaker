@@ -1814,8 +1814,47 @@ var PatternEngine = (function () {
       var h = halves[c]; cells[c] = h[0];
       if (h[0] !== h[1]) splits.push({ x: c % cols, y: Math.floor(c / cols), diagonal: cellsSample[c].split, a: h[0], b: h[1] });
     });
-    var found = readLines(img, grid);
-    return { cols: cols, rows: rows, cells: cells, splits: splits, groups: groupsOut, lines: found.lines, lineGroups: found.groups, grid: grid, symbols: symbols };
+    var found = readLines(img, grid), dots = readKnots(img, grid, found.lines);
+    return { cols: cols, rows: rows, cells: cells, splits: splits, groups: groupsOut, lines: found.lines, lineGroups: found.groups,
+      knots: dots.knots, knotGroups: dots.groups, grid: grid, symbols: symbols };
+  }
+  // French knots on a Source Chart: filled dots on grid corners. Around the corner, a fifth of a cell out in every
+  // direction that misses the gridlines, the page is clearly darker than the cells' corners further out. Corners
+  // where two or more Backstitch lines end are left alone (crossing lines look the same there).
+  function readKnots(img, grid, lines) {
+    var ends = {}, knots = [], groups = [];
+    lines.forEach(function (l) { [l.x0 + ',' + l.y0, l.x1 + ',' + l.y1].forEach(function (k) { ends[k] = (ends[k] || 0) + 1; }); });
+    var CORE = [], FAR = [];
+    for (var q = 0; q < 4; q++) [22.5, 45, 67.5].forEach(function (a) { var t = (a + 90 * q) * Math.PI / 180; CORE.push([Math.cos(t) * 0.2, Math.sin(t) * 0.2]); });
+    [45, 135, 225, 315].forEach(function (a) { var t = a * Math.PI / 180; FAR.push([Math.cos(t) * 0.45, Math.sin(t) * 0.45]); });
+    function at(gx, gy) { var p = gridPoint(grid, gx, gy), c = pixelAt(img, p[0], p[1]); return { y: 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2], rgb: c }; }
+    function dotAt(cx, cy) {
+      var core = CORE.map(function (d) { return at(cx + d[0], cy + d[1]); }), far = FAR.map(function (d) { return at(cx + d[0], cy + d[1]); });
+      var bg = Math.max.apply(null, far.map(function (s2) { return s2.y; })), ys = core.map(function (s2) { return s2.y; });
+      return Math.max.apply(null, ys) > bg - 60 || Math.max.apply(null, ys) - Math.min.apply(null, ys) > 70 ? null : core;
+    }
+    for (var y = 0; y <= grid.rows; y++) for (var x = 0; x <= grid.cols; x++) {
+      if ((ends[x + ',' + y] || 0) >= 2) continue;
+      // A dot pulls the fitted crossing toward itself, so look for its middle a little around the corner.
+      var core = null;
+      for (var oy = -0.2; oy <= 0.201 && !core; oy += 0.1) for (var ox = -0.2; ox <= 0.201 && !core; ox += 0.1) core = dotAt(x + ox, y + oy);
+      if (!core) continue;
+      var rgb = [0, 1, 2].map(function (ch) { return core.reduce(function (n, s2) { return n + s2.rgb[ch]; }, 0) / core.length; }), lab = rgbToLab(rgb);
+      var best = -1, bd = 25;
+      groups.forEach(function (g, gi) { var d = dE76(lab, g.lab); if (d < bd) { bd = d; best = gi; } });
+      if (best < 0) { groups.push({ lab: lab, sum: [0, 0, 0], count: 0 }); best = groups.length - 1; }
+      var g = groups[best]; g.count++; g.sum = g.sum.map(function (v, ch) { return v + rgb[ch]; });
+      knots.push({ x: x, y: y, group: best });
+    }
+    var order = groups.map(function (g, i) { return i; }).sort(function (a, b) { return groups[b].count - groups[a].count; }), rank = [];
+    order.forEach(function (gi, r) { rank[gi] = r; });
+    return {
+      knots: knots.map(function (k) { return { x: k.x, y: k.y, group: rank[k.group] }; }),
+      groups: order.map(function (gi) {
+        var g = groups[gi], rgb = g.sum.map(function (v) { return Math.round(v / g.count); });
+        return { rgb: rgb, hex: rgbHex(rgb), count: g.count, guess: DMC[nearestDmc(rgbToLab(rgb))].code };
+      })
+    };
   }
   var SYMBOL_STARTERS = ['310', '321', '797', '699', '972', '208', '3865', '433', '603', '996', '762', '3371', '742', '911', '553', '3766'];
   // Symbol grouping: each marked cell's symbol as a 12 × 12 ink map (soft, 0..1), compared allowing a one-pixel
@@ -2074,7 +2113,9 @@ var PatternEngine = (function () {
       if (f == null || f < 0) return;
       p.backstitches.push({ x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1, f: f });
     });
-    p.extraStitches = Object.keys(p.splits).length > 0 || p.backstitches.length > 0;
+    var kf = (opts.knotFlosses || []).map(function (code) { return code == null ? -1 : flossIndex(code); });
+    (read.knots || []).forEach(function (k) { var f = kf[k.group]; if (f != null && f >= 0) p.knots.push({ x: k.x, y: k.y, f: f }); });
+    p.extraStitches = Object.keys(p.splits).length > 0 || p.backstitches.length > 0 || p.knots.length > 0;
     p.fit = 'shrink';
     p.palette = orderPalette(p.cells, used.filter(function (f) { return f >= 0; }).filter(function (f, i, arr) { return arr.indexOf(f) === i; }));
     if (p.overcast) p.overcast = defaultOvercast(p.blank, p.cols, p.palette);
@@ -3602,7 +3643,7 @@ var ChartPdf = (function () {
       return new Promise(function (r) { c.toBlob(r, 'image/jpeg', 0.88); }).then(function (b) { src[key] = b; return b; });
     }
     return Promise.all([blob(src.page, 'pageBlob'), blob(src.straight, 'straightBlob')]).then(function (b) {
-      return { page: b[0], straight: b[1], corners: src.corners, cols: src.cols, rows: src.rows, flosses: src.flosses, lineFlosses: src.lineFlosses || null, key: src.key || '', joined: !!src.joined, pages: src.pages || 1, layout: src.layout || null };
+      return { page: b[0], straight: b[1], corners: src.corners, cols: src.cols, rows: src.rows, flosses: src.flosses, lineFlosses: src.lineFlosses || null, knotFlosses: src.knotFlosses || null, key: src.key || '', joined: !!src.joined, pages: src.pages || 1, layout: src.layout || null };
     });
   }
   function canvasFromBlob(b) {
@@ -3616,7 +3657,7 @@ var ChartPdf = (function () {
           app.id = rec.id; app.name = rec.name; $('#name').value = rec.name;
           app.blank = rec.blank; app.frame = null; app.colorCount = rec.colorCount; app.confetti = rec.confetti;
           app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.maskPast = []; app.maskFuture = [];
-          app.source = { page: cv[0], straight: cv[1], pageBlob: rec.source.page, straightBlob: rec.source.straight, corners: rec.source.corners, cols: rec.source.cols, rows: rec.source.rows, flosses: rec.source.flosses, lineFlosses: rec.source.lineFlosses || null, key: rec.source.key || '',
+          app.source = { page: cv[0], straight: cv[1], pageBlob: rec.source.page, straightBlob: rec.source.straight, corners: rec.source.corners, cols: rec.source.cols, rows: rec.source.rows, flosses: rec.source.flosses, lineFlosses: rec.source.lineFlosses || null, knotFlosses: rec.source.knotFlosses || null, key: rec.source.key || '',
             joined: !!rec.source.joined, pages: rec.source.pages || 1, layout: rec.source.layout || null };
           app.pattern = E.deserialize(rec.pattern);
           var f1 = E.palette(app.pattern)[0]; app.floss = f1 ? f1.code : DEFAULT_FLOSS; app.selected = null; app.showPhoto = false;
@@ -3774,7 +3815,7 @@ var ChartPdf = (function () {
   // saved: { corners, cols, rows, flosses } when re-reading an imported Pattern
   function startGrid(page, name, saved) {
     var data = page.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, page.width, page.height);
-    imp = { page: page, data: data, name: name, reread: !!saved, adding: !saved && addingPage, flosses: saved ? saved.flosses : null, lineFlosses: saved ? saved.lineFlosses : null,
+    imp = { page: page, data: data, name: name, reread: !!saved, adding: !saved && addingPage, flosses: saved ? saved.flosses : null, lineFlosses: saved ? saved.lineFlosses : null, knotFlosses: saved ? saved.knotFlosses : null,
       key: saved ? saved.key || '' : '', keyFrom: saved ? null : pdfKey, glyphs: saved ? null : page.glyphs || null, manual: {} };
     if (saved) { imp.corners = saved.corners.map(function (p) { return p.slice(); }); imp.cols = saved.cols; imp.rows = saved.rows; imp.typed = true; }
     else { imp.corners = E.guessChartCorners(data); var n = E.estimateGridCounts(data, imp.corners); imp.cols = n.cols; imp.rows = n.rows; imp.typed = false; }
@@ -3866,6 +3907,8 @@ var ChartPdf = (function () {
         imp.flosses = imp.read.groups.map(function (gr, k) { return keep ? imp.flosses[k] : gr.paper ? null : gr.guess; });
         var keepL = imp.lineFlosses && imp.lineFlosses.length === imp.read.lineGroups.length && !prev;
         imp.lineFlosses = imp.read.lineGroups.map(function (gr, k) { return keepL ? imp.lineFlosses[k] : gr.guess; });
+        var keepK = imp.knotFlosses && imp.knotFlosses.length === imp.read.knotGroups.length && !prev;
+        imp.knotFlosses = imp.read.knotGroups.map(function (gr, k) { return keepK ? imp.knotFlosses[k] : gr.guess; });
         imp.manual = {}; imp.bySymbol = {}; // colors set by hand, and matched by symbol: key numbers leave both alone
         $('#impKey').value = imp.key;
         if (imp.key && !keep) applyKey();
@@ -3888,6 +3931,8 @@ var ChartPdf = (function () {
     var g = E.keyGuesses(imp.read.groups, codes), gl = E.keyGuesses(imp.read.lineGroups, codes);
     imp.read.groups.forEach(function (gr, k) { if (!imp.manual['cell' + k] && !imp.bySymbol['cell' + k] && !gr.paper) imp.flosses[k] = g[k]; });
     imp.read.lineGroups.forEach(function (gr, k) { if (!imp.manual['line' + k]) imp.lineFlosses[k] = gl[k]; });
+    var gk = E.keyGuesses(imp.read.knotGroups, codes);
+    imp.read.knotGroups.forEach(function (gr, k) { if (!imp.manual['knot' + k]) imp.knotFlosses[k] = gk[k]; });
   }
   // A PDF that prints its symbols as text: each color takes the DMC number beside its symbol in the key.
   function applySymbolKey(pairs) {
@@ -3920,10 +3965,19 @@ var ChartPdf = (function () {
     c.getContext('2d').putImageData(out, 0, 0);
     return c;
   }
-  // Thread rows: one per cell group ("c<k>") and one per Backstitch line color ("l<k>").
+  // Thread rows: one per cell group (kind "cell"), Backstitch line color ("line") and French knot color ("knot").
+  // Lines and knots can be skipped rather than left as bare fabric.
   function rowInfo(row) {
-    var line = row.dataset.kind === 'line', k = +row.dataset.k;
-    return { line: line, k: k, gr: line ? imp.read.lineGroups[k] : imp.read.groups[k], list: line ? imp.lineFlosses : imp.flosses };
+    var kind = row.dataset.kind, k = +row.dataset.k;
+    return { line: kind !== 'cell', unit: kind, k: k,
+      gr: kind === 'line' ? imp.read.lineGroups[k] : kind === 'knot' ? imp.read.knotGroups[k] : imp.read.groups[k],
+      list: kind === 'line' ? imp.lineFlosses : kind === 'knot' ? imp.knotFlosses : imp.flosses };
+  }
+  function knotCloseUp(gr) {
+    var c = document.createElement('canvas'); c.width = c.height = 44;
+    var cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, 44, 44);
+    cx.fillStyle = gr.hex; cx.beginPath(); cx.arc(22, 22, 9, 0, Math.PI * 2); cx.fill();
+    return c;
   }
   function lineCloseUp(gr) {
     var c = document.createElement('canvas'); c.width = c.height = 44;
@@ -3943,11 +3997,11 @@ var ChartPdf = (function () {
       var row = document.createElement('div');
       row.className = 'thread'; row.dataset.k = k; row.dataset.kind = kind;
       var printed = document.createElement('span'); printed.className = 'printed'; printed.style.background = gr.hex; printed.title = 'Printed color';
-      row.appendChild(kind === 'line' ? lineCloseUp(gr) : cellCloseUp(gr)); row.appendChild(printed);
+      row.appendChild(kind === 'line' ? lineCloseUp(gr) : kind === 'knot' ? knotCloseUp(gr) : cellCloseUp(gr)); row.appendChild(printed);
       var f = document.createElement('div'); f.className = 'fields';
       f.innerHTML = '<div class="row"><input type="text" inputmode="text" autocomplete="off" aria-label="DMC number" placeholder="DMC" value="' + (code || '') + '">' +
         '<button class="secondary" data-act="imp-pick">Pick</button>' +
-        '<button class="secondary" data-act="imp-bare" aria-pressed="' + (code == null) + '">' + (kind === 'line' ? 'Skip' : 'Bare fabric') + '</button></div>' +
+        '<button class="secondary" data-act="imp-bare" aria-pressed="' + (code == null) + '">' + (kind === 'cell' ? 'Bare fabric' : 'Skip') + '</button></div>' +
         '<div class="nm"></div>';
       row.appendChild(f); list.appendChild(row);
       threadName(row);
@@ -3958,6 +4012,11 @@ var ChartPdf = (function () {
       list.appendChild(h);
       imp.read.lineGroups.forEach(function (gr, k) { addRow('line', gr, k, imp.lineFlosses[k]); });
     }
+    if (imp.read.knotGroups.length) {
+      var hk = document.createElement('p'); hk.className = 'muted'; hk.textContent = 'French knots found on the chart:';
+      list.appendChild(hk);
+      imp.read.knotGroups.forEach(function (gr, k) { addRow('knot', gr, k, imp.knotFlosses[k]); });
+    }
   }
   function threadName(row) {
     var r = rowInfo(row), code = r.list[r.k], nm = $('.nm', row), fl = code && dmc(code);
@@ -3965,7 +4024,7 @@ var ChartPdf = (function () {
     $('[data-act=imp-bare]', row).setAttribute('aria-pressed', String(code == null));
     nm.classList.toggle('bad', !fl && code != null);
     var none = r.line ? 'Skipped' : 'Left as bare fabric', n = r.gr.count;
-    nm.textContent = (code == null ? none : fl ? fl.name : 'Not a DMC number') + ' · ' + n + (r.line ? ' line' : ' cell') + (n === 1 ? '' : 's');
+    nm.textContent = (code == null ? none : fl ? fl.name : 'Not a DMC number') + ' · ' + n + ' ' + r.unit + (n === 1 ? '' : 's');
   }
   $('#impThreads').addEventListener('input', function (ev) {
     var row = ev.target.closest('.thread'); if (!row) return;
@@ -3982,19 +4041,19 @@ var ChartPdf = (function () {
       r.list[r.k] = r.list[r.k] == null ? r.gr.guess : null;
       $('input', row).value = r.list[r.k] || ''; threadName(row);
     } else if (b.dataset.act === 'imp-pick') {
-      openPicker(r.line ? 'Thread for these lines' : 'Thread for this color', null, function (code) { r.list[r.k] = code; $('input', row).value = code; threadName(row); });
+      openPicker(r.unit === 'line' ? 'Thread for these lines' : r.unit === 'knot' ? 'Thread for these knots' : 'Thread for this color', null, function (code) { r.list[r.k] = code; $('input', row).value = code; threadName(row); });
     }
   });
   function makeImported() {
-    var bad = imp.flosses.concat(imp.lineFlosses).filter(function (c) { return c != null && !dmc(c); });
+    var bad = imp.flosses.concat(imp.lineFlosses, imp.knotFlosses).filter(function (c) { return c != null && !dmc(c); });
     if (bad.length) { toast('Check the DMC numbers marked in red (or mark them Bare fabric).'); return; }
     if (imp.flosses.every(function (c) { return c == null; })) { toast('Every color is bare fabric, so there is nothing to stitch.'); return; }
     if (imp.adding) { startPlacing(); return; }
     var keepId = imp.reread && app.source ? app.id : null, count = imp.reread ? app.blank.count : 14, finish = imp.reread ? app.blank.finish : 'framed';
-    var p = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, count: count, finish: finish });
+    var p = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, knotFlosses: imp.knotFlosses, count: count, finish: finish });
     clearTimeout(saveTimer);
     app.id = keepId; app.photo = null; app.photoData = null; app.mask = null; app.masked = null; app.frame = null; app.maskPast = []; app.maskFuture = [];
-    app.source = { page: imp.page, straight: straighten(imp.read.grid), corners: imp.corners, cols: imp.cols, rows: imp.rows, flosses: imp.flosses.slice(), lineFlosses: imp.lineFlosses.slice(), key: imp.key || '' };
+    app.source = { page: imp.page, straight: straighten(imp.read.grid), corners: imp.corners, cols: imp.cols, rows: imp.rows, flosses: imp.flosses.slice(), lineFlosses: imp.lineFlosses.slice(), knotFlosses: imp.knotFlosses.slice(), key: imp.key || '' };
     app.blank = p.blank; app.pattern = p; app.showPhoto = false; app.selected = null;
     if (!imp.reread) { app.name = imp.name; $('#name').value = app.name; }
     var f0 = E.palette(p)[0]; app.floss = f0 ? f0.code : DEFAULT_FLOSS; app.tool = 'pencil';
@@ -4020,7 +4079,7 @@ var ChartPdf = (function () {
   }
   function startPlacing() {
     var base = chartBase();
-    imp.part = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, count: base.blank.count, finish: base.blank.finish });
+    imp.part = E.createImportedPattern({ read: imp.read, flosses: imp.flosses, lineFlosses: imp.lineFlosses, knotFlosses: imp.knotFlosses, count: base.blank.count, finish: base.blank.finish });
     impStep('place');
     placeSide(imp.side || 'right');
   }

@@ -8,7 +8,7 @@ const E = loadEngine();
 // thin grey gridlines with bold lines every 10, all on a page with a margin. kind(x, y) returns
 // null for plain paper, or { tint: [r, g, b], symbol: 'x' | 'dot' | 'tri' }.
 const YELLOW = [246, 238, 160], BLUE = [190, 214, 222], WHITE = [255, 255, 255];
-function chart(cols, rows, kind, { cell = 14, margin = 30, warp = null, lines = [] } = {}) {
+function chart(cols, rows, kind, { cell = 14, margin = 30, warp = null, lines = [], knots = [], knotColor = [150, 30, 40], knotR = 0.3 } = {}) {
   const W = cols * cell + 2 * margin, H = rows * cell + 2 * margin;
   const data = new Uint8ClampedArray(W * H * 4).fill(255);
   // paint in chart space, map through optional warp (chart → page)
@@ -56,6 +56,11 @@ function chart(cols, rows, kind, { cell = 14, margin = 30, warp = null, lines = 
       const u = (x0 + (x1 - x0) * t / n) * S, v = (y0 + (y1 - y0) * t / n) * S;
       for (let d = -1.5; d <= 1.5; d += 0.5) { put(u + d, v, [10, 10, 10]); put(u, v + d, [10, 10, 10]); }
     }
+  }
+  // French knots: filled dots centred on grid corners (chart cell units)
+  for (const [kx, ky] of knots) {
+    const r = knotR * S;
+    for (let dv = -r; dv <= r; dv += 0.5) for (let du = -r; du <= r; du += 0.5) if (du * du + dv * dv <= r * r) put(kx * S + du, ky * S + dv, knotColor);
   }
   const corners = [page(0, 0), page(cols * S, 0), page(cols * S, rows * S), page(0, rows * S)];
   return { image: { width: W, height: H, data }, corners };
@@ -299,4 +304,32 @@ test('colored charts are still grouped by color, not split by symbol', () => {
   const read = E.readChart(image, { corners, cols: 12, rows: 10 });
   assert.equal(read.symbols, false);
   assert.equal(read.groups.length, 4);
+});
+
+const KNOTS = [[2, 2], [7, 5], [10, 9], [4, 8]];
+const knotSet = read => read.knots.map(k => [k.x, k.y]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+
+test('French knots printed as dots on grid corners are read, with their color, and nothing else is', () => {
+  const { image, corners } = chart(12, 10, sampleKind, { knots: KNOTS });
+  const read = E.readChart(image, { corners, cols: 12, rows: 10 });
+  assert.deepEqual(knotSet(read), [[2, 2], [4, 8], [7, 5], [10, 9]]);
+  assert.equal(read.knotGroups.length, 1);
+  assert.ok(read.knotGroups[0].count === 4 && /^#9/.test(read.knotGroups[0].hex), read.knotGroups[0].hex);
+  assert.equal(groupAt(read, 2, 2).count, 24, 'a knot on a corner does not change the cells around it');
+});
+
+test('dot symbols, bold gridlines and Backstitch corners are not knots, even photographed at an angle', () => {
+  const clean = chart(12, 10, sampleKind, { lines: [[1, 1, 5, 1], [5, 1, 5, 4], [6, 6, 8, 8], [6, 8, 8, 6]] });
+  assert.deepEqual(E.readChart(clean.image, { corners: clean.corners, cols: 12, rows: 10 }).knots, []);
+  const g = 0.00012, h = -0.00008;
+  const warp = (u, v) => { const w = g * u + h * v + 1; return [(1.02 * u + 0.08 * v + 60) / w, (-0.05 * u + 0.98 * v + 50) / w]; };
+  const angled = chart(12, 10, sampleKind, { cell: 16, margin: 80, warp, knots: KNOTS, knotColor: [30, 60, 140] });
+  assert.deepEqual(knotSet(E.readChart(angled.image, { corners: angled.corners, cols: 12, rows: 10 })), [[2, 2], [4, 8], [7, 5], [10, 9]]);
+});
+
+test('read knots become French knots with the confirmed Floss, or are skipped', () => {
+  const read = { cols: 2, rows: 1, cells: [0, 1], groups: [{}, { paper: true }], splits: [], lines: [], knots: [{ x: 1, y: 1, group: 0 }, { x: 2, y: 0, group: 1 }] };
+  const p = E.createImportedPattern({ read, flosses: ['310', null], knotFlosses: ['321', null] });
+  assert.deepEqual(E.knots(p).map(k => [k.x, k.y, k.code]), [[1, 1, '321']]);
+  assert.equal(p.extraStitches, true);
 });
