@@ -8,11 +8,11 @@ Open a terminal in this folder and run `python3 -m http.server 8000`, then visit
 
 ## Publish to GitHub Pages
 
-1. Create a new repository on GitHub (for example `stitch-keychains`). It can be public; your photos and patterns stay on your phone.
+1. The repository is `duderosier/StitchMaker`. It can be public; your photos and patterns stay on your phone.
 2. Push this folder to it:
-   `git remote add origin https://github.com/<you>/stitch-keychains.git` then `git push -u origin main`.
+   `git remote add origin https://github.com/duderosier/StitchMaker.git` then `git push -u origin main`.
 3. On GitHub: **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: `main`, folder `/ (root)` → Save**.
-4. After a minute the app is live at `https://<you>.github.io/stitch-keychains/`.
+4. After a minute the app is live at `https://duderosier.github.io/StitchMaker/` (the path is case-sensitive).
 
 Files that need to be on Pages: `index.html`, `sw.js`, `manifest.webmanifest`, `icon-180.png`, `icon-192.png`, `icon-512.png`. Everything else (tests, docs, `.scratch/`) is harmless to publish.
 
