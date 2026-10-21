@@ -11,10 +11,10 @@ const bands = () => E.createPattern({
 });
 const counts = p => Object.fromEntries(E.palette(p).map(f => [f.code, f.count]));
 
-test('the Palette lists each Floss with DMC number, name, color, Stitch count and Split Cell parts', () => {
+test('the Palette lists each Floss with DMC number, name, color, Stitch count, Split Cell parts, half and quarter stitches', () => {
   const p = bands();
   const black = E.palette(p).find(f => f.code === '310');
-  assert.deepEqual(black, { code: '310', name: 'Black', hex: '#000000', count: 30, parts: 0 });
+  assert.deepEqual(black, { code: '310', name: 'Black', hex: '#000000', count: 30, parts: 0, halves: 0, quarters: 0 });
 });
 
 test('Merge reassigns every Stitch of one Floss to another and drops it from the Palette', () => {

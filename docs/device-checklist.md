@@ -69,3 +69,7 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 - [ ] Import a chart with black outlines: the threads step lists "Backstitch lines" with 310; the pattern shows them as lines.
 - [ ] Edit → Line: tap a corner, tap more corners to chain, tap the last one to stop; tap a line to remove it.
 - [ ] Chart PDF prints the lines and a Backstitch section with lengths.
+
+## More stitch types (2026-10-21)
+- [ ] With Extra stitch types on, Half (with the Diagonal choice), Quarter (tap a corner of a square) and Knot (tap a corner or a square's middle) add stitches in the picked color; tapping again removes them.
+- [ ] The Chart PDF draws them, lists half and quarter stitches per thread and has a French knots section.

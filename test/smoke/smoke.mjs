@@ -158,8 +158,16 @@ try {
   await page.mouse.click(b3.x + b3.width / 2 - 30, b3.y + b3.height / 2 - 40);
   await page.mouse.click(b3.x + b3.width / 2 + 30, b3.y + b3.height / 2 - 40);
   await page.waitForTimeout(100);
+  await page.click('[data-tool=half]');
+  await page.mouse.click(b3.x + b3.width / 2 - 60, b3.y + b3.height / 2 + 60);
+  await page.click('[data-tool=quarter]');
+  await page.mouse.click(b3.x + b3.width / 2 + 60, b3.y + b3.height / 2 + 60);
+  await page.click('[data-tool=knot]');
+  await page.mouse.click(b3.x + b3.width / 2, b3.y + b3.height / 2 + 90);
+  await page.waitForTimeout(100);
   await tab(page, 'chart');
   const chartTxt = await page.textContent('#chartSummary');
+  check(/1 half stitch\b/.test(chartTxt) && /1 quarter stitch\b/.test(chartTxt) && /1 French knot\b/.test(chartTxt), `the Half, Quarter and Knot tools add their stitches (${chartTxt})`);
   check(/1 backstitch lines?/.test(chartTxt), `the Line tool stitches a Backstitch between two corners (${chartTxt})`);
   await tab(page, 'colors');
   const splitTxt = (await page.locator('#flossList .floss .ct').allTextContents()).join(' ');

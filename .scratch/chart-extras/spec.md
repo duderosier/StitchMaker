@@ -1,6 +1,6 @@
 # Spec: Chart extras
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 
