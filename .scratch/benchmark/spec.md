@@ -1,6 +1,6 @@
 # Spec: Adopting what popular cross-stitch software does
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 

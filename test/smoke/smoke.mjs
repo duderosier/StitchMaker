@@ -128,6 +128,15 @@ try {
   const pdf = await readFile(await dl.path(), 'latin1');
   check(pdf.startsWith('%PDF-') && pdf.trimEnd().endsWith('%%EOF') && /\/Count 1\b/.test(pdf), 'Chart PDF is a one-page PDF');
 
+  await tab(page, 'colors');
+  const countsOf = async () => (await page.locator('#flossList .floss .ct').allTextContents()).join(' ');
+  const plainCounts = await countsOf();
+  await page.click('[data-dither="1"]'); await page.waitForTimeout(400);
+  const ditheredCounts = await countsOf();
+  check(await page.getAttribute('[data-dither="1"]', 'aria-pressed') === 'true' && await page.isDisabled('[data-confetti="1"]') && ditheredCounts !== plainCounts,
+    `Dithering On rebuilds the photo with mixed stitches (${plainCounts} → ${ditheredCounts})`);
+  await page.click('[data-dither="0"]'); await page.waitForTimeout(400);
+  check(await countsOf() === plainCounts, 'Dithering Off brings the plain colors back');
   // Saved and restored after reload.
   await page.waitForTimeout(900);
   await page.reload(); await page.waitForTimeout(900);
