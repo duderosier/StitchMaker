@@ -12,3 +12,7 @@ Importing a Source Chart from a PDF needs the page drawn as an image, which brow
 
 - The very first PDF import needs a connection; after that it works offline.
 - The pdf.js version is pinned and cached under the same `stitch-keychains-v<N>` cache, so a bump re-fetches it.
+
+## Addendum (2026-10-20): HEIC photos
+
+The same pattern covers HEIC/HEIF photos (iPhone camera files) on browsers that cannot show them (Chrome, Android): `heic2any` 0.0.4 is fetched from jsDelivr only when a picture fails to open and looks like HEIC, then cached by the service worker. Safari opens HEIC natively and never downloads it.

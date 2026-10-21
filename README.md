@@ -27,7 +27,7 @@ Files that need to be on Pages: `index.html`, `sw.js`, `manifest.webmanifest`, `
 
 - `npm test`: Pattern Engine tests under Node (no dependencies; the engine is extracted straight from `index.html`).
 - `npm run check`: every inline script parses.
-- `npm run smoke`: drives the real page in Chromium at phone and unfolded-Fold sizes (layout, sliders, pinch zoom, full screen, PDF export, saving, drawing, chart import). Needs Playwright and pdf.js (`npm i --no-save playwright pdfjs-dist@3.11.174` and `npx playwright install chromium`; or point `PDFJS_DIR` at a pdf.js `build` folder).
+- `npm run smoke`: drives the real page in Chromium at phone and unfolded-Fold sizes (layout, sliders, pinch zoom, full screen, PDF export, saving, drawing, chart import). Needs Playwright, pdf.js and heic2any (`npm i --no-save playwright pdfjs-dist@3.11.174 heic2any@0.0.4` and `npx playwright install chromium`; or point `PDFJS_DIR` / `HEIC2ANY_DIR` at their `build` / `dist` folders).
 - `npm run hooks` once per clone: turns on the pre-commit hook, which runs the checks and bumps the offline cache name in `sw.js` whenever `index.html` changes.
 - GitHub Actions runs all of it on every push (`.github/workflows/ci.yml`).
 - On real phones, use `docs/device-checklist.md`.

@@ -70,7 +70,7 @@ h1, h2, h3 { text-transform: lowercase; letter-spacing: -0.005em; }
   /* Fixed preview height: it must not resize when the page scrolls or the step changes. */
   grid-template-rows: auto clamp(210px, 40svh, 620px) auto minmax(0, 1fr) auto;
   grid-template-areas: "top" "stage" "tabs" "panel" "dock";
-  height: 100vh; height: 100svh;
+  height: 100vh; height: 100svh; height: var(--app-h, 100svh);
   padding: calc(8px + env(safe-area-inset-top)) 12px 0;
   gap: 10px;
   transition: grid-template-rows .3s ease;
@@ -85,7 +85,10 @@ h1, h2, h3 { text-transform: lowercase; letter-spacing: -0.005em; }
   border-radius: 999px; padding: 6px;
   box-shadow: 0 8px 22px rgba(74, 29, 94, .28);
 }
-.top .mascot { width: 34px; height: 34px; flex: none; margin-left: 2px; }
+.top .mascot {
+  width: 44px; height: 44px; flex: none; margin-left: 2px; padding: 5px;
+  background: var(--card-2); border-radius: 999px; box-shadow: inset 0 0 0 2px #fff;
+}
 .name {
   flex: 1; min-width: 0;
   font: 800 20px/1.15 var(--font);
@@ -112,6 +115,7 @@ h1, h2, h3 { text-transform: lowercase; letter-spacing: -0.005em; }
   background-image: radial-gradient(circle at 50% 50%, var(--aida-hole) 0 1.1px, transparent 1.4px);
   background-size: 7px 7px;
   margin: 6px;
+  container-type: size;
 }
 .stage-wrap::after { /* the seam */
   content: ""; position: absolute; inset: 7px; border: 2px dashed var(--seam); border-radius: calc(var(--r-xl) - 7px); pointer-events: none;
@@ -149,8 +153,17 @@ h1, h2, h3 { text-transform: lowercase; letter-spacing: -0.005em; }
 .slider input[type=range] { pointer-events: none; width: 100%; min-width: 0; }
 .slider-shield { position: absolute; inset: 0; touch-action: pan-y; cursor: pointer; }
 .empty {
-  position: absolute; inset: 0; display: grid; place-content: center; gap: 12px;
-  text-align: center; padding: 24px; z-index: 1;
+  position: absolute; inset: 0; display: grid; place-content: safe center; gap: 12px;
+  text-align: center; padding: 24px; z-index: 3; overflow-y: auto;
+}
+.stage-wrap:has(.empty:not([hidden])) .stage-tools { display: none; }
+@container (max-height: 440px) {
+  .empty { gap: 8px; padding: 18px 16px; }
+  .empty .mascot { width: 58px; height: 58px; }
+  .empty h2 { font-size: 21px; }
+  .empty p { display: none; }
+  .empty .actions { gap: 6px; }
+  .empty .primary, .empty .secondary { min-height: 46px; padding: 0 16px; font-size: 14.5px; }
 }
 .empty .mascot { width: 92px; height: 92px; justify-self: center; }
 .empty h2 { font: 800 25px/1.15 var(--font); margin: 0; }
@@ -243,7 +256,7 @@ input[type=number] { width: 92px; }
 .dock {
   grid-area: dock; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
   background: var(--ink); border-radius: var(--r-xl) var(--r-xl) 0 0; margin: 0 -12px;
-  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom) + var(--under-bar, 0px));
   box-shadow: 0 -8px 22px rgba(74, 29, 94, .2);
 }
 .dock button {
@@ -274,7 +287,7 @@ dialog::backdrop { background: rgba(74, 29, 94, .35); backdrop-filter: blur(3px)
 .saved .d { font-size: 12.5px; color: var(--ink-soft); }
 .saved .actions { grid-column: 1 / -1; }
 .toast {
-  position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom) + var(--under-bar, 0px)); transform: translateX(-50%);
   background: var(--ink); color: #fff; padding: 12px 20px; border-radius: 999px; box-shadow: var(--shadow); font-size: 14.5px; z-index: 40;
   max-width: 92vw; text-align: center; pointer-events: none;
 }
@@ -288,7 +301,7 @@ dialog::backdrop { background: rgba(74, 29, 94, .35); backdrop-filter: blur(3px)
     grid-template-columns: minmax(0, 1fr) minmax(340px, 410px);
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     grid-template-areas: "top top" "stage tabs" "stage panel" "stage dock";
-    padding: calc(14px + env(safe-area-inset-top)) 22px calc(18px + env(safe-area-inset-bottom));
+    padding: calc(14px + env(safe-area-inset-top)) 22px calc(18px + env(safe-area-inset-bottom) + var(--under-bar, 0px));
     gap: 12px 18px;
   }
   .stage-wrap { margin: 6px; }
@@ -297,7 +310,7 @@ dialog::backdrop { background: rgba(74, 29, 94, .35); backdrop-filter: blur(3px)
   .tabs { flex-wrap: wrap; overflow: visible; }
   .tabs button { flex: 1 0 auto; }
   .dock { margin: 0; border-radius: var(--r-xl); padding: 8px; }
-  .toast { bottom: 120px; }
+  .toast { bottom: calc(120px + var(--under-bar, 0px)); }
 }
 @media (min-width: 1100px) {
   .app, .app.drawer-up { max-width: 1320px; margin: 0 auto; }
@@ -360,7 +373,7 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
 <div class="deco" aria-hidden="true">
   <span style="left:3%;top:18%">✦</span><span class="b" style="left:2%;top:62%">✧</span>
   <span style="right:3%;top:30%">✧</span><span style="right:2%;top:78%">✦</span>
-  <span class="k" style="left:2%;top:86%">(˶ᵔ ᵕ ᵔ˶)</span><span class="k" style="right:2%;top:9%">(｡•ᴗ•｡)</span>
+  <span class="k" style="left:2%;top:86%">(˶ᵔ ᵕ ᵔ˶)</span><span class="k" style="right:2%;top:46%">(｡•ᴗ•｡)</span>
 </div>
 <div class="app">
   <header class="top">
@@ -547,8 +560,8 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
   </nav>
 </div>
 
-<input type="file" id="file" accept="image/*" hidden>
-<input type="file" id="chartFile" accept="image/*,application/pdf,.pdf" hidden>
+<input type="file" id="file" accept="image/*,image/heic,image/heif" hidden>
+<input type="file" id="chartFile" accept="image/*,image/heic,image/heif,.heic,.heif,application/pdf,.pdf" hidden>
 <div class="toast" id="toast" hidden role="status"></div>
 
 <dialog id="picker">
@@ -1875,14 +1888,59 @@ var ChartPdf = (function () {
   }
 
   // ---------- photo ----------
+  // Opens any picture the browser can show. HEIC/HEIF (iPhone photos) open natively on Safari; elsewhere a
+  // decoder is fetched the first time and cached for offline use, like pdf.js (ADR 0002).
+  var HEIC2ANY = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+  function loadScriptOnce(src, global, what) {
+    if (window[global]) return Promise.resolve(window[global]);
+    return new Promise(function (resolve, reject) {
+      var sc = document.createElement('script');
+      sc.src = src;
+      sc.onload = function () { window[global] ? resolve(window[global]) : reject(new Error(what + ' did not start')); };
+      sc.onerror = function () { sc.remove(); reject(new Error(what + ' needs the internet the first time')); };
+      document.head.appendChild(sc);
+    });
+  }
+  function looksHeic(file) {
+    if (/hei[cf]/i.test(file.type || '') || /\.hei[cf]$/i.test(file.name || '')) return Promise.resolve(true);
+    return file.slice(4, 12).arrayBuffer().then(function (b) {
+      var t = String.fromCharCode.apply(null, new Uint8Array(b));
+      return /^ftyp(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(t);
+    }).catch(function () { return false; });
+  }
+  function imageFromBlob(blob) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(blob), img = new Image();
+      img.onload = function () { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('not a picture')); };
+      img.src = url;
+    });
+  }
+  function openPicture(file, onSlow) {
+    return imageFromBlob(file).catch(function (err) {
+      return looksHeic(file).then(function (heic) {
+        if (!heic) throw err;
+        if (onSlow) onSlow();
+        return loadScriptOnce(HEIC2ANY, 'heic2any', 'The HEIC reader').then(function (convert) {
+          return convert({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+        }).then(function (out) { return imageFromBlob(Array.isArray(out) ? out[0] : out); }, function (e) {
+          throw new Error(/internet/.test(e && e.message) ? e.message : 'that HEIC photo could not be read');
+        });
+      });
+    });
+  }
+  function pictureError(err, kinds) {
+    var m = err && err.message;
+    return m && m !== 'not a picture' ? 'Could not open that photo: ' + m + '.' : 'That file could not be opened. Try ' + kinds + '.';
+  }
+
   function loadPhotoFile(file) {
-    var url = URL.createObjectURL(file), img = new Image();
-    img.onload = function () {
+    toast('Opening the photo…');
+    openPicture(file, function () { toast('Converting the HEIC photo…'); }).then(function (img) {
       var sc = Math.min(1, MAX_PHOTO / Math.max(img.naturalWidth, img.naturalHeight));
       var c = document.createElement('canvas');
       c.width = Math.max(1, Math.round(img.naturalWidth * sc)); c.height = Math.max(1, Math.round(img.naturalHeight * sc));
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); // browsers apply camera orientation when drawing
-      URL.revokeObjectURL(url);
       setPhoto(c, null);
       app.source = null;
       app.name = (file.name || 'Untitled keychain').replace(/\.[^.]+$/, '').slice(0, 40) || 'Untitled keychain';
@@ -1894,9 +1952,7 @@ var ChartPdf = (function () {
       rebuild();
       setTab('background');
       toast('Photo added. Remove the Background, or skip to Colors.');
-    };
-    img.onerror = function () { URL.revokeObjectURL(url); toast('That file could not be opened as a picture. Try a JPEG or PNG.'); };
-    img.src = url;
+    }).catch(function (err) { toast(pictureError(err, 'a JPEG, PNG or HEIC photo')); });
   }
   function photoImageData() {
     return app.photo.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, app.photo.width, app.photo.height);
@@ -2694,17 +2750,9 @@ var ChartPdf = (function () {
   function impBusy(text) { $('#impBusy').hidden = !text; if (text) $('#impBusyText').textContent = text; }
   function openImporter(title) { $('#impTitle').textContent = title || 'Import a chart'; if (!importer.open) importer.showModal(); }
   function loadPdfJs() {
-    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
-    return new Promise(function (resolve, reject) {
-      var sc = document.createElement('script');
-      sc.src = PDFJS + 'pdf.min.js';
-      sc.onload = function () {
-        if (!window.pdfjsLib) { reject(new Error('the PDF reader did not start')); return; }
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
-        resolve(window.pdfjsLib);
-      };
-      sc.onerror = function () { sc.remove(); reject(new Error('the PDF reader needs the internet the first time')); };
-      document.head.appendChild(sc);
+    return loadScriptOnce(PDFJS + 'pdf.min.js', 'pdfjsLib', 'the PDF reader').then(function (lib) {
+      lib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
+      return lib;
     });
   }
   function renderPdfPage(pdf, n, maxSide) {
@@ -2735,16 +2783,13 @@ var ChartPdf = (function () {
       }).catch(function (err) { impBusy(''); importer.close(); toast('Could not open that PDF: ' + (err && err.message || 'unknown error') + '.'); });
       return;
     }
-    var url = URL.createObjectURL(file), img = new Image();
     impBusy('Opening the picture…'); impStep('grid');
-    img.onload = function () {
+    openPicture(file, function () { impBusy('Converting the HEIC photo…'); }).then(function (img) {
       var sc = Math.min(1, MAX_SOURCE / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
       c.width = Math.max(1, Math.round(img.naturalWidth * sc)); c.height = Math.max(1, Math.round(img.naturalHeight * sc));
       var cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height); cx.drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url); impBusy(''); startGrid(c, name);
-    };
-    img.onerror = function () { URL.revokeObjectURL(url); impBusy(''); importer.close(); toast('That file could not be opened. Try a JPEG, PNG or PDF.'); };
-    img.src = url;
+      impBusy(''); startGrid(c, name);
+    }).catch(function (err) { impBusy(''); importer.close(); toast(pictureError(err, 'a JPEG, PNG, HEIC or PDF')); });
   }
   $('#impPages').addEventListener('click', function (ev) {
     var b = ev.target.closest('button[data-page]'); if (!b || !imp || !imp.pdf) return;
@@ -3042,6 +3087,25 @@ var ChartPdf = (function () {
   var ICON_EXPAND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
   var ICON_SHRINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
   $('#btnFull').innerHTML = ICON_EXPAND;
+  // Size the app to what the browser really shows. Some browsers (DuckDuckGo with its address bar at the
+  // bottom) lay the page out underneath their own toolbar; there the dock gets extra room below its buttons.
+  function fitViewport() {
+    var vv = window.visualViewport, h = window.innerHeight;
+    if (vv && vv.scale <= 1.01) h = Math.min(h, Math.round(vv.height));
+    var typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '');
+    if (typing && fitViewport.w === window.innerWidth && h < fitViewport.h) return; // the keyboard is up
+    fitViewport.w = window.innerWidth; fitViewport.h = h;
+    var root = document.documentElement.style;
+    root.setProperty('--app-h', h + 'px');
+    var standalone = window.matchMedia && matchMedia('(display-mode: standalone)').matches;
+    var under = /DuckDuckGo\//.test(navigator.userAgent) && !standalone && screen.height - h < 64;
+    root.setProperty('--under-bar', under ? '60px' : '0px');
+  }
+  fitViewport();
+  window.addEventListener('resize', fitViewport);
+  window.addEventListener('orientationchange', function () { setTimeout(fitViewport, 300); });
+  if (window.visualViewport) visualViewport.addEventListener('resize', fitViewport);
+  setTimeout(fitViewport, 400); setTimeout(fitViewport, 1500);
   // The controls drawer pulls up over part of the preview on a phone, for one-handed use.
   $('#btnDrawer').addEventListener('click', function () {
     var up = !$('.app').classList.contains('drawer-up');

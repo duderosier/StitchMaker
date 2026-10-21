@@ -12,6 +12,8 @@ const photo = join(root, 'test/smoke/fixtures/cat.jpg');
 const chartPng = join(root, 'test/smoke/fixtures/chart.png'), chartPdf = join(root, 'test/smoke/fixtures/chart.pdf');
 // pdf.js normally comes from cdnjs (ADR 0002); the test serves the same version from node_modules instead.
 const pdfjsDir = process.env.PDFJS_DIR || join(root, 'node_modules/pdfjs-dist/build');
+// Likewise the HEIC decoder (heic2any) normally comes from jsDelivr.
+const heicDir = process.env.HEIC2ANY_DIR || join(root, 'node_modules/heic2any/dist');
 
 async function loadPlaywright() {
   for (const spec of [process.env.PLAYWRIGHT_MODULE, 'playwright', '/opt/npm-tools/node_modules/playwright/index.js'].filter(Boolean)) {
@@ -52,6 +54,10 @@ async function openPage(contextOptions) {
   await page.route('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/**', async route => {
     const name = new URL(route.request().url()).pathname.split('/').pop();
     try { await route.fulfill({ body: await readFile(join(pdfjsDir, name)), contentType: 'text/javascript' }); } catch { await route.abort(); }
+  });
+  await page.route('https://cdn.jsdelivr.net/npm/heic2any@*/dist/*', async route => {
+    const name = new URL(route.request().url()).pathname.split('/').pop();
+    try { await route.fulfill({ body: await readFile(join(heicDir, name)), contentType: 'text/javascript' }); } catch { await route.abort(); }
   });
   await page.goto(url);
   return { page, errors };
@@ -175,6 +181,13 @@ try {
     await page.waitForTimeout(300);
     check(await page.inputValue('#impCols') === '24', `PDF page 2 shows the chart grid (${await page.inputValue('#impCols')} across)`);
   }
+  await page.click('#importer [data-act=close-dialog]');
+  await page.evaluate(() => { document.querySelector('#impCols').value = ''; });
+  await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart.heic'));
+  await page.waitForFunction(() => !document.querySelector('#importer').open || (document.querySelector('#impBusy').hidden && document.querySelector('#impCols').value), null, { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const heicCols = await page.inputValue('#impCols'), heicOpen = await page.evaluate(() => document.querySelector('#importer').open);
+  check(heicOpen && heicCols === '24', `a HEIC photo of a chart opens (${heicCols} across)`);
   await page.click('#importer [data-act=close-dialog]');
   check(errors.length === 0, `no page errors on the phone${errors.length ? ': ' + errors.join(' | ') : ''}`);
 
