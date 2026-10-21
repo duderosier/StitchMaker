@@ -31,6 +31,8 @@ function chart(cols, rows, kind, { cell = 14, margin = 30, warp = null, lines = 
     if (k && k.symbol) {
       const a = iu - S / 2, b = iv - S / 2, r = S * 0.28;
       const on = k.symbol === 'x' ? (Math.abs(Math.abs(a) - Math.abs(b)) < 1.2 && Math.abs(a) < r)
+        : k.symbol === 'plus' ? ((Math.abs(a) < 1.2 && Math.abs(b) < r) || (Math.abs(b) < 1.2 && Math.abs(a) < r))
+        : k.symbol === 'bar' ? (Math.abs(a) < r && Math.abs(b) < 1.8)
         : k.symbol === 'dot' ? (a * a + b * b < (S * 0.12) ** 2)
         : (b > -r && b < r && Math.abs(a) < (b + r) / 2 && b > r - 2.2) || (b > -r && b < r && Math.abs(Math.abs(a) - (b + r) / 2) < 1.1);
       if (on) rgb = [40, 40, 50];
@@ -262,4 +264,39 @@ test('heavy lines along grid corners are read as Backstitch, one unit line per c
 test('stitch counts are not fooled by a shoulder beside the gridline repeat', () => {
   const { image, corners } = chart(24, 20, (x, y) => sampleKind(x % 12, y % 10), { cell: 18 });
   assert.deepEqual(E.estimateGridCounts(image, corners), { cols: 24, rows: 20 });
+});
+
+// A black-and-white chart: every stitched cell is white paper with a black symbol; only the symbols tell threads apart.
+function symbolKind(x, y) {
+  if (y < 3) return { tint: WHITE, symbol: x < 6 ? 'x' : 'plus' };
+  if (y < 6) return { tint: WHITE, symbol: x < 6 ? 'tri' : 'bar' };
+  if (y < 8 && x >= 2 && x < 10) return { tint: WHITE, symbol: 'dot' };
+  return null;
+}
+function checkSymbols(read) {
+  const x = groupAt(read, 0, 0), plus = groupAt(read, 11, 0), tri = groupAt(read, 0, 4), bar = groupAt(read, 11, 4), dot = groupAt(read, 5, 6), paper = groupAt(read, 0, 9);
+  assert.equal(new Set([x, plus, tri, bar, dot, paper]).size, 6, 'one group per symbol, plus paper');
+  assert.equal(read.groups.length, 6);
+  assert.deepEqual([x.count, plus.count, tri.count, bar.count, dot.count, paper.count], [18, 18, 18, 18, 16, 32]);
+  assert.equal(paper.paper, true);
+  assert.equal(read.symbols, true, 'the reading says it grouped by symbol');
+}
+
+test('a black-and-white chart groups cells by the shape of their symbol', () => {
+  const { image, corners } = chart(12, 10, symbolKind);
+  checkSymbols(E.readChart(image, { corners, cols: 12, rows: 10 }));
+});
+
+test('symbols are told apart on an angled photo too', () => {
+  const g = 0.00012, h = -0.00008, cell = 16;
+  const warp = (u, v) => { const w = g * u + h * v + 1; return [(1.02 * u + 0.08 * v + 60) / w, (-0.05 * u + 0.98 * v + 50) / w]; };
+  const { image, corners } = chart(12, 10, symbolKind, { cell, margin: 80, warp });
+  checkSymbols(E.readChart(image, { corners, cols: 12, rows: 10 }));
+});
+
+test('colored charts are still grouped by color, not split by symbol', () => {
+  const { image, corners } = chart(12, 10, sampleKind);
+  const read = E.readChart(image, { corners, cols: 12, rows: 10 });
+  assert.equal(read.symbols, false);
+  assert.equal(read.groups.length, 4);
 });

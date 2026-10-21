@@ -213,6 +213,14 @@ try {
     check(await page.inputValue('#impCols') === '24', `PDF page 2 shows the chart grid (${await page.inputValue('#impCols')} across)`);
   }
   await page.click('#importer [data-act=close-dialog]');
+  await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-bw.png'));
+  await page.waitForSelector('.imp-step[data-step=grid].on');
+  await page.waitForTimeout(300);
+  await page.click('[data-act=imp-read]');
+  await page.waitForSelector('.imp-step[data-step=threads].on', { timeout: 20000 });
+  const bwRows = await page.$$eval('#impThreads .thread input', els => els.map(e => e.value));
+  check(bwRows.length === 6 && new Set(bwRows.filter(Boolean)).size === 5 && /no colors/.test(await page.textContent('#impThreads')),
+    `a black-and-white chart reads one row per symbol, each starting on its own thread (${bwRows.join(' ')})`);
   await page.setInputFiles('#chartFile', join(root, 'test/smoke/fixtures/chart-key.pdf'));
   await page.waitForSelector('.imp-step[data-step=grid].on', { timeout: 20000 });
   await page.waitForTimeout(300);

@@ -1636,48 +1636,55 @@ var PatternEngine = (function () {
     function isPaper(c) { return c.ink <= INK_MARK && dE76(c.lab, [100, 0, 0]) < 9; }
     function dist(c, g) { return dE76(c.lab, g.lab) + 10 * Math.abs(c.ink - g.ink); }
     var groups = [], assign = new Array(s.length);
-    s.forEach(function (c, k) {
+    // A black-and-white chart (every marked cell pale and grey, no Split Cells) is told apart by symbol shape.
+    var marked = s.filter(function (c) { return !isPaper(c); });
+    var symbols = marked.length > 0 && s.length === cellsSample.length &&
+      marked.filter(function (c) { return Math.hypot(c.lab[1], c.lab[2]) < 8 && c.lab[0] > 85; }).length >= 0.9 * marked.length;
+    if (symbols) groupBySymbol(img, grid, s, isPaper, groups, assign);
+    else s.forEach(function (c, k) {
       if (isPaper(c)) { assign[k] = -1; return; }
       var best = -1, bd = 14;
       groups.forEach(function (g, gi) { var d = dist(c, g); if (d < bd) { bd = d; best = gi; } });
       if (best < 0) { groups.push({ lab: c.lab.slice(), ink: c.ink, sum: [0, 0, 0, 0], n: 0 }); best = groups.length - 1; }
       assign[k] = best;
     });
-    // A few refinement passes: move each cell to its nearest group centre.
-    for (var pass = 0; pass < 3; pass++) {
-      groups.forEach(function (g) { g.acc = [0, 0, 0, 0]; g.n = 0; });
-      s.forEach(function (c, k) { var g = groups[assign[k]]; if (!g) return; g.acc[0] += c.lab[0]; g.acc[1] += c.lab[1]; g.acc[2] += c.lab[2]; g.acc[3] += c.ink; g.n++; });
-      groups = groups.filter(function (g) { return g.n; });
-      groups.forEach(function (g) { g.lab = [g.acc[0] / g.n, g.acc[1] / g.n, g.acc[2] / g.n]; g.ink = g.acc[3] / g.n; });
-      s.forEach(function (c, k) {
-        if (assign[k] < 0) return;
-        var best = 0, bd = Infinity;
-        groups.forEach(function (g, gi) { var d = dist(c, g); if (d < bd) { bd = d; best = gi; } });
-        assign[k] = best;
+    if (!symbols) {
+      // A few refinement passes: move each cell to its nearest group centre.
+      for (var pass = 0; pass < 3; pass++) {
+        groups.forEach(function (g) { g.acc = [0, 0, 0, 0]; g.n = 0; });
+        s.forEach(function (c, k) { var g = groups[assign[k]]; if (!g) return; g.acc[0] += c.lab[0]; g.acc[1] += c.lab[1]; g.acc[2] += c.lab[2]; g.acc[3] += c.ink; g.n++; });
+        groups = groups.filter(function (g) { return g.n; });
+        groups.forEach(function (g) { g.lab = [g.acc[0] / g.n, g.acc[1] / g.n, g.acc[2] / g.n]; g.ink = g.acc[3] / g.n; });
+        s.forEach(function (c, k) {
+          if (assign[k] < 0) return;
+          var best = 0, bd = Infinity;
+          groups.forEach(function (g, gi) { var d = dist(c, g); if (d < bd) { bd = d; best = gi; } });
+          assign[k] = best;
+        });
+      }
+      groups.forEach(function (g) { g.n = 0; }); assign.forEach(function (a) { if (a >= 0) groups[a].n++; });
+      // Merge groups that ended up nearly the same color (lighting or symbol density split one thread).
+      (function mergeClose() {
+        for (;;) {
+          var bi = -1, bj = -1, bd = 9;
+          for (var a = 0; a < groups.length; a++) for (var b = a + 1; b < groups.length; b++) {
+            if (!groups[a].n || !groups[b].n) continue;
+            var d = dE76(groups[a].lab, groups[b].lab); if (d < bd) { bd = d; bi = a; bj = b; }
+          }
+          if (bi < 0) return;
+          var A = groups[bi], B = groups[bj], n = A.n + B.n;
+          A.lab = [0, 1, 2].map(function (q) { return (A.lab[q] * A.n + B.lab[q] * B.n) / n; }); A.ink = (A.ink * A.n + B.ink * B.n) / n; A.n = n; B.n = 0;
+          assign.forEach(function (x, k) { if (x === bj) assign[k] = bi; });
+        }
+      })();
+      // Fold specks (a cell or two darkened by a crossing outline) into the look-alike group next to them.
+      groups.forEach(function (g, gi) {
+        if (g.n > 2) return;
+        var best = -1, bd = 25;
+        groups.forEach(function (h, hi) { if (hi !== gi && h.n > 2) { var d = dE76(g.lab, h.lab); if (d < bd) { bd = d; best = hi; } } });
+        if (best >= 0) { assign.forEach(function (a, k) { if (a === gi) assign[k] = best; }); groups[best].n += g.n; g.n = 0; }
       });
     }
-    groups.forEach(function (g) { g.n = 0; }); assign.forEach(function (a) { if (a >= 0) groups[a].n++; });
-    // Merge groups that ended up nearly the same color (lighting or symbol density split one thread).
-    (function mergeClose() {
-      for (;;) {
-        var bi = -1, bj = -1, bd = 9;
-        for (var a = 0; a < groups.length; a++) for (var b = a + 1; b < groups.length; b++) {
-          if (!groups[a].n || !groups[b].n) continue;
-          var d = dE76(groups[a].lab, groups[b].lab); if (d < bd) { bd = d; bi = a; bj = b; }
-        }
-        if (bi < 0) return;
-        var A = groups[bi], B = groups[bj], n = A.n + B.n;
-        A.lab = [0, 1, 2].map(function (q) { return (A.lab[q] * A.n + B.lab[q] * B.n) / n; }); A.ink = (A.ink * A.n + B.ink * B.n) / n; A.n = n; B.n = 0;
-        assign.forEach(function (x, k) { if (x === bj) assign[k] = bi; });
-      }
-    })();
-    // Fold specks (a cell or two darkened by a crossing outline) into the look-alike group next to them.
-    groups.forEach(function (g, gi) {
-      if (g.n > 2) return;
-      var best = -1, bd = 25;
-      groups.forEach(function (h, hi) { if (hi !== gi && h.n > 2) { var d = dE76(g.lab, h.lab); if (d < bd) { bd = d; best = hi; } } });
-      if (best >= 0) { assign.forEach(function (a, k) { if (a === gi) assign[k] = best; }); groups[best].n += g.n; g.n = 0; }
-    });
     var live = [], remap = groups.map(function (g) { if (!g.n) return -1; live.push(g); return live.length - 1; });
     assign = assign.map(function (a) { return a < 0 ? -1 : remap[a]; }); groups = live;
     // Describe each group: printed color, a representative cell, a DMC guess.
@@ -1689,12 +1696,14 @@ var PatternEngine = (function () {
         var d = dist(c, g); if (d < rd) { rd = d; rep = k; }
       });
       rgb = rgb.map(function (v) { return Math.round(v / n); });
-      var rc = s[rep].cell;
+      var rc = s[g.rep != null ? g.rep : rep].cell;
       return { rgb: rgb, hex: rgbHex(rgb), ink: g.ink, count: n, paper: false, guess: DMC[nearestDmc(rgbToLab(rgb))].code, sample: { x: rc % cols, y: Math.floor(rc / cols) } };
     });
     var order = out.map(function (g, i) { return i; }).sort(function (a, b) { return out[b].count - out[a].count; });
     var rank = []; order.forEach(function (gi, r) { rank[gi] = r; });
     var groupsOut = order.map(function (gi) { return out[gi]; });
+    // A symbol's printed color says nothing about its thread: start each symbol on a different, easily told apart Floss.
+    if (symbols) groupsOut.forEach(function (g, r) { g.guess = SYMBOL_STARTERS[r % SYMBOL_STARTERS.length]; g.symbol = true; });
     var paperCells = assign.filter(function (a) { return a < 0; }).length;
     var itemGroup = assign.map(function (a) { return a < 0 ? groupsOut.length : rank[a]; });
     if (paperCells) {
@@ -1712,7 +1721,100 @@ var PatternEngine = (function () {
       if (h[0] !== h[1]) splits.push({ x: c % cols, y: Math.floor(c / cols), diagonal: cellsSample[c].split, a: h[0], b: h[1] });
     });
     var found = readLines(img, grid);
-    return { cols: cols, rows: rows, cells: cells, splits: splits, groups: groupsOut, lines: found.lines, lineGroups: found.groups, grid: grid };
+    return { cols: cols, rows: rows, cells: cells, splits: splits, groups: groupsOut, lines: found.lines, lineGroups: found.groups, grid: grid, symbols: symbols };
+  }
+  var SYMBOL_STARTERS = ['310', '321', '797', '699', '972', '208', '3865', '433', '603', '996', '762', '3371', '742', '911', '553', '3766'];
+  // Symbol grouping: each marked cell's symbol as a 12 × 12 ink map (soft, 0..1), compared allowing a one-pixel
+  // shift; cells join the closest group's average symbol, then a few passes settle them.
+  var GLYPH = 12;
+  function glyphOf(img, grid, x, y) {
+    var Y = new Float64Array(GLYPH * GLYPH), sorted, hi, g = new Float64Array(GLYPH * GLYPH);
+    for (var j = 0; j < GLYPH; j++) for (var i = 0; i < GLYPH; i++) {
+      var sum = 0;
+      for (var b = 0; b < 2; b++) for (var a = 0; a < 2; a++) {
+        var q = gridPoint(grid, x + 0.15 + 0.7 * (i + 0.25 + 0.5 * a) / GLYPH, y + 0.15 + 0.7 * (j + 0.25 + 0.5 * b) / GLYPH), c = pixelAt(img, q[0], q[1]);
+        sum += 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+      }
+      Y[j * GLYPH + i] = sum / 4;
+    }
+    sorted = Array.prototype.slice.call(Y).sort(function (p, q) { return p - q; });
+    hi = Math.max(60, sorted[Math.floor(sorted.length * 0.9)]); // the cell's own paper
+    for (var k = 0; k < Y.length; k++) g[k] = Math.max(0, Math.min(1, (0.78 * hi - Y[k]) / (0.33 * hi)));
+    // Soften by a pixel, so thin strokes that land a little differently in each cell still overlap.
+    var out = new Float64Array(GLYPH * GLYPH);
+    for (j = 0; j < GLYPH; j++) for (i = 0; i < GLYPH; i++) {
+      var acc = 0, wt = 0;
+      for (var v = -1; v <= 1; v++) for (var u = -1; u <= 1; u++) {
+        var ii = i + u, jj = j + v; if (ii < 0 || jj < 0 || ii >= GLYPH || jj >= GLYPH) continue;
+        var w = u || v ? 0.5 : 1; acc += w * g[jj * GLYPH + ii]; wt += w;
+      }
+      out[j * GLYPH + i] = acc / wt;
+    }
+    return out;
+  }
+  function glyphDist(A, B) { // 1 − soft overlap (min/max), at the best of the nine one-pixel shifts
+    var best = 1;
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      var mn = 0, mx = 0;
+      for (var j = 0; j < GLYPH; j++) for (var i = 0; i < GLYPH; i++) {
+        var a = A[j * GLYPH + i], i2 = i + dx, j2 = j + dy;
+        var b = i2 >= 0 && j2 >= 0 && i2 < GLYPH && j2 < GLYPH ? B[j2 * GLYPH + i2] : 0;
+        mn += Math.min(a, b); mx += Math.max(a, b);
+      }
+      if (mx > 0) best = Math.min(best, 1 - mn / mx);
+    }
+    return best;
+  }
+  function groupBySymbol(img, grid, items, isPaper, groups, assign) {
+    var JOIN = 0.38, glyphs = [];
+    items.forEach(function (c, k) {
+      if (isPaper(c)) { assign[k] = -1; return; }
+      glyphs[k] = glyphOf(img, grid, c.cell % grid.cols, Math.floor(c.cell / grid.cols));
+      var best = -1, bd = JOIN;
+      groups.forEach(function (g, gi) { var d = glyphDist(glyphs[k], g.glyph); if (d < bd) { bd = d; best = gi; } });
+      if (best < 0) { groups.push({ glyph: glyphs[k], first: k }); best = groups.length - 1; }
+      assign[k] = best;
+    });
+    for (var pass = 0; pass < 3; pass++) {
+      groups.forEach(function (g) { g.acc = new Float64Array(GLYPH * GLYPH); g.n = 0; });
+      items.forEach(function (c, k) { var g = groups[assign[k]]; if (!g) return; for (var t = 0; t < g.acc.length; t++) g.acc[t] += glyphs[k][t]; g.n++; });
+      groups.forEach(function (g) { if (g.n) g.glyph = g.acc.map(function (v) { return v / g.n; }); });
+      items.forEach(function (c, k) {
+        if (assign[k] < 0) return;
+        var best = assign[k], bd = Infinity;
+        groups.forEach(function (g, gi) { if (!g.n) return; var d = glyphDist(glyphs[k], g.glyph); if (d < bd) { bd = d; best = gi; } });
+        assign[k] = best;
+      });
+    }
+    groups.forEach(function (g) { g.n = 0; g.lab = [0, 0, 0]; g.ink = 0; g.rep = null; g.rd = Infinity; });
+    items.forEach(function (c, k) {
+      var g = groups[assign[k]]; if (!g) return;
+      g.n++; g.ink += c.ink; g.lab = g.lab.map(function (v, q) { return v + c.lab[q]; });
+      var d = glyphDist(glyphs[k], g.glyph); if (d < g.rd) { g.rd = d; g.rep = k; }
+    });
+    groups.forEach(function (g) { if (g.n) { g.lab = g.lab.map(function (v) { return v / g.n; }); g.ink /= g.n; } });
+    // Join groups whose average symbols ended up alike (one symbol drawn a little differently across the page).
+    for (;;) {
+      var bi = -1, bj = -1, bd = JOIN * 0.8;
+      for (var a = 0; a < groups.length; a++) for (var b = a + 1; b < groups.length; b++) {
+        if (!groups[a].n || !groups[b].n) continue;
+        var d = glyphDist(groups[a].glyph, groups[b].glyph); if (d < bd) { bd = d; bi = a; bj = b; }
+      }
+      if (bi < 0) break;
+      var A = groups[bi], B = groups[bj], n = A.n + B.n;
+      A.glyph = A.glyph.map(function (v, t) { return (v * A.n + B.glyph[t] * B.n) / n; });
+      A.lab = A.lab.map(function (v, q) { return (v * A.n + B.lab[q] * B.n) / n; }); A.ink = (A.ink * A.n + B.ink * B.n) / n;
+      if (B.rd < A.rd) { A.rep = B.rep; A.rd = B.rd; }
+      A.n = n; B.n = 0;
+      assign.forEach(function (x, k) { if (x === bj) assign[k] = bi; });
+    }
+    // Fold specks (a symbol crossed by an outline) into the closest real symbol.
+    groups.forEach(function (g, gi) {
+      if (!g.n || g.n > 2) return;
+      var best = -1, bd = 0.6;
+      groups.forEach(function (h, hi) { if (hi !== gi && h.n > 2) { var d = glyphDist(g.glyph, h.glyph); if (d < bd) { bd = d; best = hi; } } });
+      if (best >= 0) { assign.forEach(function (a, k) { if (a === gi) assign[k] = best; }); groups[best].n += g.n; g.n = 0; }
+    });
   }
   // Backstitch on a Source Chart: heavy lines from grid corner to corner, along a cell side or across a cell.
   // A line is dark along nearly its whole length and clearly darker than both sides; one along a cell side
@@ -3477,6 +3579,11 @@ var ChartPdf = (function () {
   }
   function showThreads() {
     var list = $('#impThreads'); list.innerHTML = '';
+    if (imp.read.symbols) {
+      var sy = document.createElement('p'); sy.className = 'muted';
+      sy.textContent = 'This chart has no colors, so each row is one symbol (see the close-up). Find it in the key and type its DMC number.';
+      list.appendChild(sy);
+    }
     function addRow(kind, gr, k, code) {
       var row = document.createElement('div');
       row.className = 'thread'; row.dataset.k = k; row.dataset.kind = kind;
