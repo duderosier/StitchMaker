@@ -47,6 +47,8 @@ async function openPage(contextOptions) {
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('dialog', d => d.accept());
+  // The web font is cosmetic; serve nothing so the test doesn't depend on Google Fonts being reachable.
+  await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.fulfill({ body: '', contentType: 'text/css' }));
   await page.route('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/**', async route => {
     const name = new URL(route.request().url()).pathname.split('/').pop();
     try { await route.fulfill({ body: await readFile(join(pdfjsDir, name)), contentType: 'text/javascript' }); } catch { await route.abort(); }

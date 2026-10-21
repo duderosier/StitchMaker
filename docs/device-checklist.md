@@ -52,5 +52,6 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 - [ ] My patterns: open, rename and delete; New pattern starts fresh.
 
 ## Layout
-- [ ] iPhone: one column, all seven steps reachable in the bottom bar.
-- [ ] Fold unfolded: Pattern on the left, controls on the right; folding back switches to one column without losing work.
+- [ ] iPhone: one column; plum top pill; step chips under the preview; the drawer handle pulls the controls up; the bottom dock (Picture, Import chart, Draw, Save) is reachable with one thumb.
+- [ ] Fold unfolded: Pattern on the left, step chips, controls and dock on the right; folding back switches to one column without losing work.
+- [ ] Nunito loads (rounded letters) online and still shows after going offline.
