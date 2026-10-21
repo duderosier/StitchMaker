@@ -46,8 +46,15 @@ What the widely used design and stitching programs do with stitch types and feat
 | `.oxs` export and import | `.scratch/benchmark/issues/04` |
 | Stitch mode: highlight a thread, mark stitches done, progress | `.scratch/benchmark/issues/05` |
 | Dithering option for photos | `.scratch/benchmark/issues/06` |
+| Fill (paint bucket) in the Edit step | `.scratch/benchmark/issues/07` |
 
 Later, if wanted: beads, petite stitches, other thread brands (Anchor), parking marks, stash/shopping list.
+
+## Fill tool (added 2026-10-21)
+
+Every desktop chart editor and the web ones have a fill, and paint programs set the convention users expect: tap a square and every square of the same color joined to it side to side takes the new color; squares touching only at a corner are not joined. Desktop editors also offer replacing a color everywhere, which here already exists as Swap on the Colors step for whole threads. Searches did not find the exact fill options in the WinStitch, PCStitch, Stitch Fiddle or FlossCross manuals, so the details follow the common paint-bucket behavior rather than one program.
+
+Adopted: a Fill tool with "Touching squares" (default) or "All of this color". "All" is the quick way to fill a background with holes, such as the inside of a letter. The fill stays inside the Blank; split, half and quarter squares act as walls; Backstitch lines do not. A fill is one edit, so one Undo takes it back.
 
 ## Sources
 

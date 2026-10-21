@@ -81,3 +81,7 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 ## More stitch types (2026-10-21)
 - [ ] With Extra stitch types on, Half (with the Diagonal choice), Quarter (tap a corner of a square) and Knot (tap a corner or a square's middle) add stitches in the picked color; tapping again removes them.
 - [ ] The Chart PDF draws them, lists half and quarter stitches per thread and has a French knots section.
+
+## Fill tool (2026-10-21)
+- [ ] Edit → Fill, tap the empty area around a design: the background fills up to the design and the Cut Outline, in the picked color; one Undo takes it back.
+- [ ] Fill → All of this color, tap the background: enclosed gaps fill too.

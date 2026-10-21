@@ -155,6 +155,17 @@ try {
   await tab(page, 'colors');
   const drawn = await page.locator('#flossList .floss .ct').first().textContent();
   check(+drawn > 0, `drawing with the pencil adds Stitches (${drawn})`);
+  await tab(page, 'edit');
+  await page.click('[data-tool=fill]');
+  check(await page.isVisible('#fillRow'), 'the Fill tool shows its Touching / All option');
+  await page.mouse.click(b2.x + b2.width / 2, b2.y + b2.height / 2 + 40);
+  await page.waitForTimeout(100);
+  await tab(page, 'colors');
+  const filled = await page.locator('#flossList .floss .ct').first().textContent();
+  check(+filled > +drawn * 3, `tapping with the Fill tool fills the empty area around the drawing (${drawn} → ${filled})`);
+  await page.click('#undo'); await page.waitForTimeout(100);
+  check((await page.locator('#flossList .floss .ct').first().textContent()) === drawn, 'one Undo takes the whole fill back');
+  await page.click('[data-tab=edit]'); await page.click('[data-tool=pencil]');
   await tab(page, 'blank'); await page.click('[data-preset=heart-2]'); await page.waitForTimeout(150);
   await tab(page, 'colors');
   check(+(await page.locator('#flossList .floss .ct').first().textContent()) > 0, 'drawing survives changing the Blank');
