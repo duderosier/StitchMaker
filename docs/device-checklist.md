@@ -56,6 +56,7 @@ Run on the iPhone (Safari, installed to the home screen) and the Galaxy Z Fold 8
 ## Chart and saving
 - [ ] Create Chart PDF opens the share sheet on iPhone (Save to Files, Print); downloads on Android.
 - [ ] The PDF is one Letter page; Black and white has symbols only; legend counts look right.
+- [ ] The Colors step and the Chart legend give strands for the Fabric Count and skeins per thread (about 1,500 crosses per skein on 14 count).
 - [ ] Swipe the app away and reopen: the pattern is back exactly as left.
 - [ ] My patterns: open, rename and delete; New pattern starts fresh.
 

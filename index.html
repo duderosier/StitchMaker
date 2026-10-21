@@ -493,6 +493,7 @@ dialog.importer { width: min(720px, 100vw); max-width: 100vw; height: 100dvh; ma
       </div>
       <p class="muted js-drawing-only" hidden>Hand-drawn pattern: add thread colors with + on the Edit step. Tap a color here to merge, swap or drop it.</p>
       <p class="muted js-chart-only" hidden>Imported chart: tap a color to merge, swap or drop it. Re-read chart to fix the grid or the thread numbers.</p>
+      <p class="muted" id="strandsNote" hidden></p>
       <div class="floss-list" id="flossList"></div>
       <div class="actions" id="flossActions" hidden>
         <button class="secondary" data-act="merge">Merge into…</button>
@@ -2295,11 +2296,19 @@ var PatternEngine = (function () {
     out.quarters = quarterList(p).map(function (t) { var o = partOut(t); o.x = t.x - x0; o.y = t.y - y0; o.corner = t.corner; return o; });
     out.knots = knots(p).map(function (k) { return { x: k.x - x0, y: k.y - y0, code: k.code, hex: k.hex }; });
     out.knotLegend = knotLegend(p);
+    var usage = threadUsage(p), skeinsOf = {};
+    usage.threads.forEach(function (t) { skeinsOf[t.code] = t.skeins; });
+    out.strands = usage.strands;
+    out.legend.forEach(function (r) { r.skeins = skeinsOf[r.code] || 0; });
+    out.knotLegend.forEach(function (r) { r.skeins = skeinsOf[r.code] || 0; });
+    out.skeins = usage.threads.reduce(function (n, t) { return n + t.skeins; }, 0);
     out.backstitches = backstitches(p).map(function (b) { return { x0: b.x0 - x0, y0: b.y0 - y0, x1: b.x1 - x0, y1: b.y1 - y0, code: b.code, hex: b.hex }; });
     out.backstitchLegend = backstitchLegend(p);
+    out.backstitchLegend.forEach(function (r) { r.skeins = skeinsOf[r.code] || 0; });
     var next = pal.length;
     out.edgeLegend = edgeLegend(p).map(function (e) {
       var i = flossIndex(e.code);
+      e.skeins = skeinsOf[e.code] || 0;
       if (!symbolOf[i]) symbolOf[i] = SYMBOLS[next++ % SYMBOLS.length];
       e.symbol = symbolOf[i]; return e;
     });
@@ -2432,6 +2441,37 @@ var PatternEngine = (function () {
   }
 
   function flossOut(i) { var f = DMC[i]; return { code: f.code, name: f.name, hex: f.hex }; }
+  // ---------- thread usage ----------
+  // Strands by Fabric Count (plastic canvas takes all six), Backstitch half as many. Thread per stitch follows the
+  // common planning rule of about 223 × count ÷ strands full crosses per 8 m skein, waste included; part stitches
+  // count their share, Backstitch and Edge Stitches go by length. Skeins round up per thread.
+  var STRANDS = { 7: 6, 10: 4, 11: 3, 14: 2, 16: 2, 18: 2 }, SKEIN_MM = 8000 * 6;
+  function strandsFor(count) { var s2 = STRANDS[count] || 2; return { cross: s2, back: Math.max(1, Math.round(s2 / 2)), knot: s2 }; }
+  function threadUsage(p) {
+    var c = p.blank.count, st = strandsFor(c), cross = SKEIN_MM / (223 * c), by = {}, order = [];
+    function use(f, kind, mm) {
+      if (f == null || f < 0) return;
+      if (!by[f]) { by[f] = { mm: 0, uses: [] }; order.push(f); }
+      by[f].mm += mm; if (by[f].uses.indexOf(kind) < 0) by[f].uses.push(kind);
+    }
+    var cells = effectiveCells(p), sp = effectiveSplits(p), h = effectiveHalves(p), q = effectiveQuarters(p);
+    p.palette.forEach(function (f) {
+      cells.forEach(function (g) { if (g === f) use(f, 'cross', cross * st.cross); });
+      Object.keys(sp).forEach(function (k) { [sp[k].a, sp[k].b].forEach(function (g) { if (g === f) use(f, 'split', cross * st.cross / 2); }); });
+      Object.keys(h).forEach(function (k) { if (h[k].f === f) use(f, 'half', cross * st.cross / 2); });
+      Object.keys(q).forEach(function (k) { CORNERS.forEach(function (cn) { if (q[k][cn] === f) use(f, 'quarter', cross * st.cross / 4); }); });
+    });
+    (p.backstitches || []).forEach(function (b) { use(b.f, 'backstitch', Math.hypot(b.x1 - b.x0, b.y1 - b.y0) * 73 / c * st.back); });
+    (p.knots || []).forEach(function (k) { use(k.f, 'knot', 2 * cross * st.knot); });
+    var L = overcastLayout(p);
+    if (L) L.edges.forEach(function (e) { use(flossIndex(e.floss), 'edge', 100 / c * st.cross); });
+    return {
+      strands: st,
+      threads: order.map(function (f) {
+        var o = flossOut(f); o.uses = by[f].uses; o.meters = Math.round(by[f].mm / 6 / 100) / 10; o.skeins = Math.max(1, Math.ceil(by[f].mm / SKEIN_MM)); return o;
+      })
+    };
+  }
   function cellAt(p, x, y) { var f = effectiveCells(p)[y * p.cols + x]; return f >= 0 ? flossOut(f) : null; }
   // A Split Cell's diagonal and triangles (each a Floss, or null for Unstitched), or null for any other cell.
   function splitAt(p, x, y) {
@@ -2507,7 +2547,7 @@ var PatternEngine = (function () {
     readChart: readChart, estimateGridCounts: estimateGridCounts, fitChartGrid: fitChartGrid, gridPoint: gridPoint, cornerGrid: cornerGrid, guessChartCorners: guessChartCorners,
     createImportedPattern: createImportedPattern, chartBlank: chartBlank, keyCodesFromText: keyCodesFromText, keyGuesses: keyGuesses, keyPairsFromText: keyPairsFromText, cellSymbols: cellSymbols, symbolKeyGuesses: symbolKeyGuesses, chartPartOffset: chartPartOffset, joinChartPart: joinChartPart,
     blankGrid: blankGrid, allowedFinishes: allowedFinishes, allowedCounts: allowedCounts, createPattern: createPattern, cellAt: cellAt, palette: palette,
-    splitAt: splitAt, splitList: splitList, halfList: halfList, quarterList: quarterList, knots: knots, knotLegend: knotLegend, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, withFit: withFit, splitTriangles: splitTriangles, splitSide: splitSide
+    splitAt: splitAt, splitList: splitList, threadUsage: threadUsage, halfList: halfList, quarterList: quarterList, knots: knots, knotLegend: knotLegend, backstitches: backstitches, backstitchLegend: backstitchLegend, withExtraStitches: withExtraStitches, withFit: withFit, splitTriangles: splitTriangles, splitSide: splitSide
   };
 })();
 </script>
@@ -2656,7 +2696,10 @@ var ChartPdf = (function () {
 
     // Legend
     var ly = M + legendH - 6, colW = (PAGE_W - 2 * M) / 2;
-    fill('#34193A'); text('F2', 10, M, ly, 'Thread (DMC)'); ly -= 18;
+    fill('#34193A'); text('F2', 10, M, ly, 'Thread (DMC)');
+    var st = chart.strands;
+    if (st) { fill('#7A6380'); text('F1', 8.5, M + 82, ly, st.cross + ' strands for stitches' + (backLegend.length ? ', ' + st.back + ' for backstitch' : '') + (knotLegend.length ? ', ' + st.knot + ' for knots' : '') + '; skeins to buy are per thread'); }
+    ly -= 18;
     var entries = chart.legend.map(function (r) { return { r: r, edge: false }; });
     if (chart.edgeLegend.length) {
       entries.push({ heading: 'Edge stitches (overcast)' });
@@ -2670,6 +2713,7 @@ var ChartPdf = (function () {
       entries.push({ heading: 'French knots' });
       knotLegend.forEach(function (r) { entries.push({ r: r, knot: true }); });
     }
+    function skeinText(r) { return r.skeins ? ', ' + r.skeins + ' skein' + (r.skeins === 1 ? '' : 's') : ''; }
     entries.forEach(function (e, k) {
       var col = k < perCol ? 0 : 1, rowi = k < perCol ? k : k - perCol;
       var x = M + col * colW, y = ly - rowi * rowH;
@@ -2678,13 +2722,13 @@ var ChartPdf = (function () {
       if (e.knot) {
         ops.push('0.6 w'); stroke('#34193A'); fill(bw ? '#FFFFFF' : r.hex); dot(x + 9, y + 3.5, 4, 'B');
         fill('#34193A'); text('F2', 9, x + 24, y, r.code);
-        text('F1', 9, x + 58, y, r.name + '  (' + r.count + ' knot' + (r.count === 1 ? '' : 's') + ')');
+        text('F1', 9, x + 58, y, r.name + '  (' + r.count + ' knot' + (r.count === 1 ? '' : 's') + ')' + skeinText(r));
         return;
       }
       if (e.back) {
         ops.push('2 w'); stroke(bw ? '#000000' : r.hex); line(x + 1, y + 3.5, x + 17, y + 3.5);
         fill('#34193A'); text('F2', 9, x + 24, y, r.code);
-        text('F1', 9, x + 58, y, r.name + '  (' + pdfNum(r.length) + ' stitches long)');
+        text('F1', 9, x + 58, y, r.name + '  (' + pdfNum(r.length) + ' stitches long)' + skeinText(r));
         return;
       }
       if (!bw) { fill(r.hex); rect(x, y - 2, 18, 11, 'f'); }
@@ -2693,7 +2737,7 @@ var ChartPdf = (function () {
       text('F2', 8, x + 6, y + 0.5, e.edge ? (bw && chart.edgeLegend.length > 1 ? r.symbol : '') : r.symbol);
       fill('#34193A');
       text('F2', 9, x + 24, y, r.code);
-      text('F1', 9, x + 58, y, r.name + '  (' + r.count + (e.edge ? ' edge stitches)' : ' stitches' + (r.parts ? ' + ' + r.parts + ' \u00BD' : '') + (r.halves ? ' + ' + r.halves + ' half' : '') + (r.quarters ? ' + ' + r.quarters + ' \u00BC' : '') + ')'));
+      text('F1', 9, x + 58, y, r.name + '  (' + r.count + (e.edge ? ' edge stitches)' : ' stitches' + (r.parts ? ' + ' + r.parts + ' \u00BD' : '') + (r.halves ? ' + ' + r.halves + ' half' : '') + (r.quarters ? ' + ' + r.quarters + ' \u00BC' : '') + ')') + skeinText(r));
     });
     fill('#7A6380');
     text('F1', 6.5, M, M - 14, 'Color data: craft-color-codes by MakeBead (makebead.com), CC BY 4.0. Made with StitchMaker.');
@@ -3510,10 +3554,12 @@ var ChartPdf = (function () {
     $('#colorCount').value = app.colorCount; $('#ccVal').textContent = app.colorCount;
     pressed($('#confetti'), 'data-confetti', app.confetti);
     var pal = p ? E.palette(p) : [], chart = p ? E.chartLayout(p) : null;
-    var symOf = {}; if (chart) chart.legend.forEach(function (r) { symOf[r.code] = r.symbol; });
+    var symOf = {}, skOf = {}; if (chart) chart.legend.forEach(function (r) { symOf[r.code] = r.symbol; skOf[r.code] = r.skeins; });
+    $('#strandsNote').hidden = !chart;
+    if (chart) $('#strandsNote').textContent = strandsText(chart) + ' Threads to buy: ' + plural(chart.skeins, 'skein') + ' in all.';
     $('#flossList').innerHTML = pal.map(function (f) {
       return '<button class="floss" data-floss="' + f.code + '" aria-pressed="' + (app.selected === f.code) + '"><span class="swatch" style="background:' + f.hex + ';color:' + (lum(f.hex) < 0.45 ? '#fff' : '#4A1D5E') + '">' + (symOf[f.code] || '') + '</span>' +
-        '<span><span class="code">DMC ' + f.code + '</span><br><span class="nm">' + f.name + '</span></span><span class="ct">' + f.count + (f.parts ? ' + ' + f.parts + ' split' : '') + (f.halves ? ' + ' + f.halves + ' half' : '') + (f.quarters ? ' + ' + f.quarters + ' quarter' : '') + '</span></button>';
+        '<span><span class="code">DMC ' + f.code + '</span><br><span class="nm">' + f.name + (skOf[f.code] ? ' · ' + plural(skOf[f.code], 'skein') : '') + '</span></span><span class="ct">' + f.count + (f.parts ? ' + ' + f.parts + ' split' : '') + (f.halves ? ' + ' + f.halves + ' half' : '') + (f.quarters ? ' + ' + f.quarters + ' quarter' : '') + '</span></button>';
     }).join('') || '<p class="muted">Choose a photo to see its colors.</p>';
     $('#flossActions').hidden = !app.selected;
     // Edit
@@ -3531,7 +3577,7 @@ var ChartPdf = (function () {
     $('[data-tab=edge]').hidden = !over;
     if (over && app.tab === 'edge') renderEdgePane(p, L, pal);
     // Chart
-    if (chart) $('#chartSummary').textContent = chart.legend.length + ' colors, ' + chart.cells.length + ' stitches' + (chart.splits.length ? ', ' + plural(chart.splits.length, 'split square') : '') + (chart.backstitches.length ? ', ' + plural(chart.backstitches.length, 'backstitch line') : '') + (chart.halves.length ? ', ' + plural(chart.halves.length, 'half stitch', 'half stitches') : '') + (chart.quarters.length ? ', ' + plural(chart.quarters.length, 'quarter stitch', 'quarter stitches') : '') + (chart.knots.length ? ', ' + plural(chart.knots.length, 'French knot') : '') + (chart.edges.length ? ', ' + chart.edges.length + ' edge stitches' : '') + '. ' + chart.header.size + '.';
+    if (chart) $('#chartSummary').textContent = chart.legend.length + ' colors, ' + chart.cells.length + ' stitches' + (chart.splits.length ? ', ' + plural(chart.splits.length, 'split square') : '') + (chart.backstitches.length ? ', ' + plural(chart.backstitches.length, 'backstitch line') : '') + (chart.halves.length ? ', ' + plural(chart.halves.length, 'half stitch', 'half stitches') : '') + (chart.quarters.length ? ', ' + plural(chart.quarters.length, 'quarter stitch', 'quarter stitches') : '') + (chart.knots.length ? ', ' + plural(chart.knots.length, 'French knot') : '') + (chart.edges.length ? ', ' + chart.edges.length + ' edge stitches' : '') + '. ' + chart.header.size + '. ' + strandsText(chart) + ' ' + plural(chart.skeins, 'skein') + ' of thread.';
     pressed($('#bw'), 'data-bw', app.bw ? 1 : 0);
     // History
     $('#undo').disabled = !(p && E.canUndo(p));
@@ -3574,6 +3620,10 @@ var ChartPdf = (function () {
     $('#panel').scrollTop = 0; // each step starts at its top
     if (t !== 'colors' && t !== 'edit') app.showPhoto = false;
     renderPanels(); render();
+  }
+  function strandsText(chart) {
+    var st = chart.strands;
+    return 'Use ' + plural(st.cross, 'strand') + ' for stitches' + (chart.backstitches.length ? ' and ' + plural(st.back, 'strand') + ' for backstitch' : '') + ' on ' + app.blank.count + ' count.';
   }
   function plural(n, word, many) { return n + ' ' + (n === 1 ? word : many || word + 's'); }
   function setTool(t) { app.tool = t; app.lineFrom = null; renderPanels(); render(); }
